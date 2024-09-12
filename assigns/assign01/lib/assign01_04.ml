@@ -1,9 +1,9 @@
-(* Helper function to calculate k^n *)
+(* Helper function to do k^n *)
 let rec pow k n = 
   if n = 0 then 1 
   else k * pow k (n-1)
 
-(* Function to check if a number is prime *)
+(* Function checking if prime*)
 let is_prime x = 
   let rec check n = 
     if n * n > x then true 
@@ -13,7 +13,7 @@ let is_prime x =
   if x < 2 then false
   else check 2
 
-(* Function to get the nth prime number *)
+(* Function 2 *)
 let rec nth_prime n =
   match n with
   | 0 -> 2
