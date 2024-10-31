@@ -22,15 +22,15 @@ rule read =
   | "+" { PLUS }
   | "-" { MINUS }
   | "*" { TIMES }
-  | "/" { DIVIDED }
-  | "<=" { LE }
-  | ">=" { GE }
+  | "/" { DIV }
+  | "<=" { LTE }
+  | ">=" { GT }
   | "<>" { NEQ }
   | "<" { LT }
   | ">" { GT }
-  | "=" { EQ }
-  | "&&" { ANDAND }
-  | "||" { OROR }
+  | "=" { EQUALS }
+  | "&&" { AND }
+  | "||" { OR }
   | "->" { ARROW }
   | "(" { LPAREN }
   | ")" { RPAREN }
