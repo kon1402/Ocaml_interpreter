@@ -26,19 +26,19 @@ prog:
   | e = expr EOF { e }
   ;
 
-(*if-then-else, let bindings, and function definitions for parser *)
+(*if-then-else, let, fun def for parser *)
 expr:
-  | e = expr2 { e }
-  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
-  | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
-  | FUN x = VAR ARROW e = expr { Fun(x, e) }
+  | e = expr2 {e}
+  | IF e1 = expr THEN e2 = expr ELSE e3 = expr {If(e1, e2, e3)}
+  | LET x = VAR EQUALS e1 = expr IN e2 = expr {Let(x, e1, e2)}
+  | FUN x = VAR ARROW e = expr {Fun(x, e)}
   ;
 
 (* binary ops (BOP) *)
 expr2:
   | e = expr3 { e }
-  | e1 = expr2 e2 = expr3 { App(e1, e2) } %prec APP
-  | e1 = expr2 op = bop e2 = expr2 { Bop(op, e1, e2) }
+  | e1 = expr2 e2 = expr3 {App(e1, e2)} %prec APP
+  | e1 = expr2 op = bop e2 = expr2 { Bop(op, e1, e2)}
   ;
 
 (* Atomic exps *)
