@@ -9,7 +9,6 @@ let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
 rule read =
   parse
   | whitespace { read lexbuf }
-  | "rec" { REC } (*extra credit part*)
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }

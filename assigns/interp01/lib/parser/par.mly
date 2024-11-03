@@ -12,13 +12,14 @@ open Utils
 %token LT LTE GT GTE NEQ AND OR
 %token UNIT TRUE FALSE
 %token EOF
+%token REC  
 
 %right OR
 %right AND
 %left LT LTE GT GTE EQUALS NEQ
 %left PLUS MINUS
 %left TIMES DIV MOD
-%left APP 
+%left APP  
 
 %start <Utils.prog> prog
 %%
@@ -31,6 +32,10 @@ expr:
   | e = app_expr { e }
   | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
   | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
+  | LET REC x = VAR EQUALS FUN y = VAR ARROW e1 = expr IN e2 = expr 
+    { 
+      Let(x,Fun(y, e1),e2)
+    }
   | FUN x = VAR ARROW e = expr { Fun(x, e) }
   ;
 
