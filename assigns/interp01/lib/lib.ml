@@ -2,21 +2,21 @@ open Stdlib320
 open Utils
 
 
-(* Parse function *)
+(* parse function *)
 let parse s = Parser.parse s
 
-(* Substitution helper function to be used in susbt*)
+(*s ubstitution helper function to be used in susbt*)
 let rec occurs_free x e =
-  match e with
+  match e with (* this checks if x occurs free in e and isn't unbound by like a let or fun *)
   | Num _ | True | False | Unit -> false
   | Var y -> x = y
   | Bop (_, e1, e2) -> occurs_free x e1 || occurs_free x e2
   | If (e1, e2, e3) -> occurs_free x e1 || occurs_free x e2 || occurs_free x e3
   | Let (y, e1, e2) -> occurs_free x e1 || (x <> y && occurs_free x e2)
-  | Fun (y, e1) -> x <> y && occurs_free x e1
+  | Fun (y, e1) -> x <> y && occurs_free x e1 (* this is a recursive case for when y is found in e1. true if x is diff from y, false otherwise *)
   | App (e1, e2) -> occurs_free x e1 || occurs_free x e2
 
-(* Substitution function for the evaluation part *)
+(* substitution function for the eval part *)
 let rec subst v x e =
   match e with
   | Num n -> Num n
