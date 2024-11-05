@@ -1,14 +1,14 @@
 open OUnit2
 open Utils
-open Lib  (* Adjust the module name if necessary *)
+open Stdlib320
 
 (* Custom equality functions *)
-let rec value_equal v1 v2 =
+let value_equal v1 v2 =
   match v1, v2 with
   | VNum n1, VNum n2 -> n1 = n2
   | VBool b1, VBool b2 -> b1 = b2
   | VUnit, VUnit -> true
-  | VFun _, VFun _ -> true  (* Treat all functions as equal *)
+  | VFun _, VFun _ -> true 
   | _, _ -> false
 
 let result_equal r1 r2 =
@@ -41,7 +41,12 @@ let basic_examples = "Basic interpreter examples" >:::
 ; test "if true then false else" (Error ParseFail)
 ; test "let x = 1 in" (Error ParseFail)
 ; test "fun x ->" (Error ParseFail)
-; (* Add more test cases as needed *)
+; test "(5) 3" (Error InvalidApp)  (* edge cases for incomplete or invalid from here on *)
+; test "let x = 5 in x x" (Error InvalidApp)
+; test "5 +" (Error ParseFail)  (* incomplete expression? *)
+; test "if true then" (Error ParseFail)  (* incomplete if expression *)
+; test "let in" (Error ParseFail)  (* invalid let expression *)
+; test "fun -> x" (Error ParseFail)  (* invalid function syntax *)
 ]
 
 (* Run the test suite *)

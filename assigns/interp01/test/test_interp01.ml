@@ -1,1 +1,1 @@
-let () = OUnit2.run_test_tt_main basic_examples
+let _ = OUnit2.run_test_tt_main (Test.basic_examples)

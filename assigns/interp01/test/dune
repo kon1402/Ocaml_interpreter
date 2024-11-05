@@ -1,9 +1,5 @@
-(executable
-  (name test_interp01)
-  (modules test_interp01)
-  (libraries
-    ounit2
-    utils
-    lib 
-  )
-)
+(tests
+ (names test_interp01)
+ (libraries test_suite ounit2 interp01))
+
+
