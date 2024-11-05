@@ -49,5 +49,4 @@ let basic_examples = "Basic interpreter examples" >:::
 ; test "fun -> x" (Error ParseFail)  (* invalid function syntax *)
 ]
 
-(* Run the test suite *)
 let () = OUnit2.run_test_tt_main basic_examples
