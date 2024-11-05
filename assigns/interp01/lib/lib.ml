@@ -3,7 +3,7 @@ open Utils
 
 
 (* parse function *)
-let parse s = Parser.parse s
+let parse s = My_parser.parse s
 
 (*s ubstitution helper function to be used in susbt*)
 let rec occurs_free x e =
