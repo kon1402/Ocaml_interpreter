@@ -32,12 +32,18 @@ expr:
   | e = app_expr { e }
   | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
   | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
-  | LET REC x = VAR EQUALS FUN y = VAR ARROW e1 = expr IN e2 = expr 
-    { 
-      Let(x,Fun(y, e1),e2)
-    }
-  | FUN x = VAR ARROW e = expr { Fun(x, e) }
-  ;
+  | LET REC x = VAR EQUALS e1 = expr IN e2 = expr {
+    (*implemented the extracredit recursion using a fix-point combinator *)
+    let fix =
+      Fun ("g",
+        App (
+          Fun ("h", App (Var "g", Fun ("v", App (App (Var "h", Var "h"), Var "v")))),
+          Fun ("h", App (Var "g", Fun ("v", App (App (Var "h", Var "h"), Var "v"))))
+        )
+      )
+    in
+    Let (x, App (fix, Fun (x, e1)), e2)
+}
 
 app_expr:
   | e = op_expr { e }

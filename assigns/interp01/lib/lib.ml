@@ -5,7 +5,7 @@ open Utils
 (* parse function *)
 let parse s = My_parser.parse s (*this is the parse function that uses the parser directly from the parser folder *)
 
-(*s ubstitution helper function to be used in susbt*)
+(*s ub helper function to be used in susbt*)
 let rec occurs_free x e =
   match e with (* this checks if x occurs free in e and isn't unbound by like a let or fun *)
   | Num _ | True | False | Unit -> false
@@ -17,7 +17,7 @@ let rec occurs_free x e =
   | App (e1, e2) -> occurs_free x e1 || occurs_free x e2
 
 
-(* Substitutes variable x with variable y in expression e *)
+(* subs the variable x with variable y in expression e *)
 let rec subst_var y x e =
   match e with
   | Var z -> if z = x then Var y else Var z
