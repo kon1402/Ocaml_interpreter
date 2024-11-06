@@ -38,7 +38,6 @@ expr:
                              Fun("x", App(Var "f", Fun("v", App(App(Var "x", Var "x"), Var "v")))))), 
                 Fun(x, e1)), e2)
         }   
-
   ;
 
 app_expr:
