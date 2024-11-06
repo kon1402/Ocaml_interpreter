@@ -13,6 +13,7 @@ rule read =
   | "then" { THEN }
   | "else" { ELSE }
   | "let" { LET }
+  | "rec" { REC }
   | "in" { IN }
   | "fun" { FUN }
   | "mod" { MOD }
@@ -34,8 +35,7 @@ rule read =
   | "->" { ARROW }
   | "(" { LPAREN }
   | ")" { RPAREN }
-  | "rec" { REC }
   | num { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | var { VAR (Lexing.lexeme lexbuf) }
   | eof { EOF }
-  | _ { failwith ("Unexpected character: " ^ (Lexing.lexeme lexbuf)) }
+  | _ { failwith ("a character input was invalid: " ^ (Lexing.lexeme lexbuf)) }
