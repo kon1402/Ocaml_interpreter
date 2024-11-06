@@ -19,7 +19,6 @@ open Utils
 %left LT LTE GT GTE EQUALS NEQ
 %left PLUS MINUS
 %left TIMES DIV MOD
-%left APP  
 
 %start <Utils.prog> prog
 %%
