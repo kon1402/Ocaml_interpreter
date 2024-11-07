@@ -1,17 +1,8 @@
+
 %{
 open Utils
-(*
-(* counter for vars*)
-let counter = ref 0
+%}
 
-(*generate unique var names *)
-let gensym prefix =
-  let n = !counter in
-  counter := n + 1;
-  prefix ^ string_of_int n
-%}
-*)
-%}
 %token <int> NUM
 %token <string> VAR
 %token LPAREN RPAREN
@@ -38,26 +29,23 @@ prog:
   ;
 
 expr:
-  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
-  | LET REC x = VAR EQUALS e1 = expr IN e2 = expr { 
-      Let(x,
-          App(
-              Fun("f",
-                  App(
-                      Fun("x_inner", App(App(Var "f", Var "f"), Fun("v", App(App(Var "f", Var "f"), Var "v")))),
-                      Fun("x_inner", e1)
-                  )
-              ),
-              Fun(x, e1)
-          ),
-          e2
-      )
-  }
-  | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
-  | FUN x = VAR ARROW e = expr { Fun(x, e) }
   | e = app_expr { e }
+  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
+  | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
+  | LET REC x = VAR EQUALS e1 = expr IN e2 = expr {
+  (* Implemented extra credit recursion using a fix-point combinator*)
+  let fix =
+    Fun ("fix_g",
+      App (
+        Fun ("fix_h", App (Var "fix_g", Fun ("fix_v", App (App (Var "fix_h", Var "fix_h"), Var "fix_v")))),
+        Fun ("fix_h", App (Var "fix_g", Fun ("fix_v", App (App (Var "fix_h", Var "fix_h"), Var "fix_v"))))
+      )
+    )
+  in
+  Let (x, App (fix, Fun (x, e1)), e2)
+}
+  | FUN x = VAR ARROW e = expr { Fun(x, e) }
   ;
-
 
 app_expr:
   | e = op_expr { e }

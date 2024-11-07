@@ -1,7 +1,6 @@
+
 open Stdlib320
 open Utils
-
-
 (* parse function *)
 let parse s = My_parser.parse s (*this is the parse function that uses the parser directly from the parser folder *)
 
@@ -148,7 +147,7 @@ let rec eval e =
                        | Lte -> n1 <= n2
                        | Gt -> n1 > n2
                        | Gte -> n1 >= n2
-                       | _ -> false  (*false case (potential edge case) *)
+                       | _ -> false  (*false case (potential edge case?) *)
                      in Ok (VBool result)
                  | Ok _ -> Error (InvalidArgs op)
                  | Error e -> Error e)
@@ -177,23 +176,10 @@ let rec eval e =
       )
   
   | Let (x, e1, e2) ->
-        (match e1 with
-         | Fun (param, body) ->
-             (* Create a closure for the recursive function *)
-             let closure = VFun (param, body) in
-             (* Substitute x with the closure in the function body to enable recursion *)
-             let body_subst = subst closure x body in
-             let e1_subst = Fun (param, body_subst) in
-             (* Evaluate the substituted function *)
-             (match eval e1_subst with
-              | Ok v1 ->
-                  (* Substitute x with the closure in e2 *)
-                  eval (subst v1 x e2)
-              | Error e -> Error e)
-         | _ ->
-             (match eval e1 with
-              | Ok v1 -> eval (subst v1 x e2)
-              | Error e -> Error e))
+      (match eval e1 with
+       | Ok v1 -> eval (subst v1 x e2)
+       | Error e -> Error e)
+  
   | App (e1, e2) ->
       (match eval e1 with
        | Ok (VFun (x, e)) ->
