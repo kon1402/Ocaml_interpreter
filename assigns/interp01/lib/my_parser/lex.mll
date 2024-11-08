@@ -20,16 +20,16 @@ rule read =
   | "true" { TRUE }
   | "false" { FALSE }
   | "()" { UNIT }
-  | "+" { PLUS }
-  | "-" { MINUS }
-  | "*" { TIMES }
+  | "+" { ADD }
+  | "-" { SUB }
+  | "*" { MUL }
   | "/" { DIV }
   | "<=" { LTE }
   | ">=" { GTE }
   | "<>" { NEQ }
   | "<" { LT }
   | ">" { GT }
-  | "=" { EQUALS }
+  | "=" { EQ }
   | "&&" { AND }
   | "||" { OR }
   | "->" { ARROW }

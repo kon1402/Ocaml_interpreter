@@ -1,83 +1,90 @@
-
 %{
 open Utils
+
+let rec mk_app e = function
+  | [] -> e
+  | x :: es -> mk_app (App (e, x)) es
 %}
 
 %token <int> NUM
 %token <string> VAR
-%token LPAREN RPAREN
-%token IF THEN ELSE
-%token LET EQUALS IN
-%token FUN ARROW
-%token PLUS MINUS TIMES DIV MOD
-%token LT LTE GT GTE NEQ AND OR
-%token UNIT TRUE FALSE
+%token UNIT
+%token TRUE
+%token FALSE
+%token LPAREN
+%token RPAREN
+%token ADD
+%token SUB
+%token MUL
+%token DIV
+%token MOD
+%token LT
+%token LTE
+%token GT
+%token GTE
+%token EQ
+%token NEQ
+%token AND
+%token OR
+%token IF
+%token THEN
+%token ELSE
+%token LET
+%token IN
+%token FUN
+%token ARROW
+%token REC
+
 %token EOF
-%token REC  
 
 %right OR
 %right AND
-%left LT LTE GT GTE EQUALS NEQ
-%left PLUS MINUS
-%left TIMES DIV MOD
+%left LT LTE GT GTE EQ NEQ
+%left ADD SUB
+%left MUL DIV MOD
 
 %start <Utils.prog> prog
+
 %%
 
 prog:
   | e = expr EOF { e }
-  ;
 
 expr:
-  | e = app_expr { e }
-  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { If(e1, e2, e3) }
-  | LET x = VAR EQUALS e1 = expr IN e2 = expr { Let(x, e1, e2) }
-  | LET REC x = VAR EQUALS e1 = expr IN e2 = expr {
-  (* Implemented extra credit recursion using a fix-point combinator*)
-  let fix =
-    Fun ("fix_g",
-      App (
-        Fun ("fix_h", App (Var "fix_g", Fun ("fix_v", App (App (Var "fix_h", Var "fix_h"), Var "fix_v")))),
-        Fun ("fix_h", App (Var "fix_g", Fun ("fix_v", App (App (Var "fix_h", Var "fix_h"), Var "fix_v"))))
-      )
-    )
-  in
-  Let (x, App (fix, Fun (x, e1)), e2)
-}
-  | FUN x = VAR ARROW e = expr { Fun(x, e) }
-  ;
+  | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr { If (e1, e2, e3) }
+  | LET; x = VAR; EQ; e1 = expr; IN; e2 = expr { Let (x, e1, e2) }
+  | FUN; x = VAR; ARROW; e = expr { Fun (x, e) }
+  | e = expr2 { e }
+  | LET REC x = VAR EQ e1 = expr IN e2 = expr {
+    Let (x, App(Fun("f", App(Fun("x", App(Var "f", Fun("v", App(App(Var "x", Var "x"), Var "v")))), 
+                             Fun("x", App(Var "f", Fun("v", App(App(Var "x", Var "x"), Var "v")))))), 
+                Fun(x, e1)), e2)
+        }   
 
-app_expr:
-  | e = op_expr { e }
-  | e1 = app_expr e2 = simple_expr { App(e1, e2) }
-  ;
 
-op_expr:
-  | e = simple_expr { e }
-  | e1 = op_expr op = bop e2 = op_expr { Bop(op, e1, e2) }
-  ;
+%inline bop:
+  | ADD { Add }
+  | SUB { Sub }
+  | MUL { Mul }
+  | DIV { Div }
+  | MOD { Mod }
+  | LT { Lt }
+  | LTE { Lte }
+  | GT { Gt }
+  | GTE { Gte }
+  | EQ { Eq }
+  | NEQ { Neq }
+  | AND { And }
+  | OR { Or }
 
-simple_expr:
+expr2:
+  | e1 = expr2; op = bop; e2 = expr2 { Bop (op, e1, e2) }
+  | e = expr3; es = expr3* { mk_app e es }
+expr3:
   | UNIT { Unit }
   | TRUE { True }
   | FALSE { False }
   | n = NUM { Num n }
   | x = VAR { Var x }
-  | LPAREN e = expr RPAREN { e }
-  ;
+  | LPAREN; e = expr; RPAREN { e }
 
-%inline bop:
-  | PLUS   { Add }
-  | MINUS  { Sub }
-  | TIMES  { Mul }
-  | DIV    { Div }
-  | MOD    { Mod }
-  | LT     { Lt }
-  | LTE    { Lte }
-  | GT     { Gt }
-  | GTE    { Gte }
-  | EQUALS { Eq }
-  | NEQ    { Neq }
-  | AND    { And }
-  | OR     { Or }
-  ;

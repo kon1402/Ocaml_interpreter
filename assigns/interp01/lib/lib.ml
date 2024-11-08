@@ -6,17 +6,16 @@ let parse s = My_parser.parse s (*this is the parse function that uses the parse
 
 (*s ub helper function to be used in susbt*)
 let rec occurs_free x e =
-  match e with (* this checks if x occurs free in e and isn't unbound by like a let or fun *)
+  match e with
   | Num _ | True | False | Unit -> false
   | Var y -> x = y
   | Bop (_, e1, e2) -> occurs_free x e1 || occurs_free x e2
   | If (e1, e2, e3) -> occurs_free x e1 || occurs_free x e2 || occurs_free x e3
   | Let (y, e1, e2) -> occurs_free x e1 || (x <> y && occurs_free x e2)
-  | Fun (y, e1) -> x <> y && occurs_free x e1 (* this is a recursive case for when y is found in e1. true if x is diff from y, false otherwise *)
+  | Fun (y, e1) -> x <> y && occurs_free x e1
   | App (e1, e2) -> occurs_free x e1 || occurs_free x e2
 
-
-(* subs the variable x with variable y in expression e *)
+(* a helper function that does variable substitutions *)
 let rec subst_var y x e =
   match e with
   | Var z -> if z = x then Var y else Var z
@@ -28,17 +27,21 @@ let rec subst_var y x e =
   | If (e1, e2, e3) -> If (subst_var y x e1, subst_var y x e2, subst_var y x e3)
   | Let (z, e1, e2) ->
       if z = x then
-        Let (z, subst_var y x e1, e2)  (* x is shadowed *)
+        (* x is shadowed by let binding *)
+        Let (z, subst_var y x e1, e2)
       else
+        (* we nned to substitute in both e1 and e2 *)
         Let (z, subst_var y x e1, subst_var y x e2)
   | Fun (z, e1) ->
       if z = x then
-        Fun (z, e1)  (* x is shadowed *)
+        (* x is shadowed by function parameter *)
+        Fun (z, e1)
       else
+        (* else we need to substitute in the function body *)
         Fun (z, subst_var y x e1)
   | App (e1, e2) -> App (subst_var y x e1, subst_var y x e2)
 
-(* substitution function for the eval part *)
+(* Main substitution function *)
 let rec subst v x e =
   match e with
   | Num n -> Num n
@@ -57,31 +60,36 @@ let rec subst v x e =
       Bop (op, subst v x e1, subst v x e2)
   | If (e1, e2, e3) ->
       If (subst v x e1, subst v x e2, subst v x e3)
-  | Let (y, e1, e2) ->
-      if x = y then
-        (* x is shadowed, only substitute in e1 *)
-        Let (y, subst v x e1, e2)
-      else if not (occurs_free x e2) then
-        Let (y, subst v x e1, e2)
-      else
-        let fresh = gensym () in
-        Let (fresh, 
-             subst v x e1,
-             subst v x (subst_var fresh y e2))
+   | Let (y, e1, e2) ->
+        if x = y then
+            Let (y, subst v x e1, e2)
+        else if occurs_free x e2 then
+            let fresh = gensym () in
+            Let (fresh,
+                 subst v x e1,
+                 subst v x (subst_var fresh y e2))
+        else
+            Let (y, subst v x e1, e2)
   | Fun (y, e1) ->
       if x = y then
+        (* x is shadowed by function parameter *)
         Fun (y, e1)
-      else if not (occurs_free x e1) then
-        Fun (y, e1)
-      else
+      else if occurs_free x e1 then
+        (* x occurs free in function body, need to avoid capture *)
         let fresh = gensym () in
         Fun (fresh, subst v x (subst_var fresh y e1))
+      else
+        (* x doesn't occur free in function body, no capture possible *)
+        Fun (y, e1)
   | App (e1, e2) ->
-      App (subst v x e1, subst v x e2)
+    (* Make sure recursive calls are properly substituted *)
+    let e1' = subst v x e1 in
+    let e2' = subst v x e2 in
+    App (e1', e2')
+
 
 
 (* Evaluation function that uses subst in it for semantics *)
-(* Evaluation function *)
 let rec eval e =
   match e with
   | Num n -> Ok (VNum n)
@@ -176,9 +184,17 @@ let rec eval e =
       )
   
   | Let (x, e1, e2) ->
-      (match eval e1 with
-       | Ok v1 -> eval (subst v1 x e2)
-       | Error e -> Error e)
+    (match eval e1 with
+     | Ok v1 -> 
+         (match e1 with
+         | App (Fun ("f", _), _) ->
+             (* This is the Y-combinator pattern from your parser *)
+             let rec_fun = v1 in
+             eval (subst rec_fun x e2)
+         | _ -> 
+             (* Normal let binding *)
+             eval (subst v1 x e2))
+     | Error e -> Error e)
   
   | App (e1, e2) ->
       (match eval e1 with
