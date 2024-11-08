@@ -56,10 +56,17 @@ expr:
   | FUN; x = VAR; ARROW; e = expr { Fun (x, e) }
   | e = expr2 { e }
   | LET REC x = VAR EQ e1 = expr IN e2 = expr {
-    Let (x, App(Fun("f", App(Fun("x", App(Var "f", Fun("v", App(App(Var "x", Var "x"), Var "v")))), 
-                             Fun("x", App(Var "f", Fun("v", App(App(Var "x", Var "x"), Var "v")))))), 
-                Fun(x, e1)), e2)
-        }   
+    (*extra credit recursion using a fix-point combinator *)
+    let fix =
+      Fun ("g",
+        App (
+          Fun ("h", App (Var "g", Fun ("v", App (App (Var "h", Var "h"), Var "v")))),
+          Fun ("h", App (Var "g", Fun ("v", App (App (Var "h", Var "h"), Var "v"))))
+        )
+      )
+    in
+    Let (x, App (fix, Fun (x, e1)), e2)
+}
 
 
 %inline bop:
