@@ -82,7 +82,7 @@ let rec subst v x e =
         (* x doesn't occur free in function body, no capture possible *)
         Fun (y, e1)
   | App (e1, e2) ->
-    (* Make sure recursive calls are properly substituted *)
+    (* Makes sure recursive calls are properly substituted *)
     let e1' = subst v x e1 in
     let e2' = subst v x e2 in
     App (e1', e2')
