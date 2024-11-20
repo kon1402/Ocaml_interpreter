@@ -50,61 +50,28 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SFalse -> False
   | SNum n -> Num n
   | SVar x -> Var x
-  | SFun { arg = (x, t); args = more_args; body } ->
-      let base = Fun(x, t, desugar_expr body) in
-      List.fold_right
-        (fun (x, t) acc -> Fun(x, t, acc))
-        more_args
-        base
-  | SApp (e1, e2) ->
-      App(desugar_expr e1, desugar_expr e2)
-  | SLet { is_rec; name; args; ty; value; body } ->
-      let func_value = 
-        match args with
-        | [] -> desugar_expr value
-        | _ ->
-            List.fold_right
-              (fun (x, t) acc -> Fun(x, t, acc))
-              args
-              (desugar_expr value)
-      in
-      Let {
-        is_rec;
-        name;
-        ty;
-        value = func_value;
-        body = desugar_expr body
-      }
   | SIf (e1, e2, e3) ->
-      If(desugar_expr e1, desugar_expr e2, desugar_expr e3)
-  | SBop (op, e1, e2) ->
-      Bop(op, desugar_expr e1, desugar_expr e2)
-  | SAssert e ->
-      Assert(desugar_expr e)
+      If (desugar_expr e1, desugar_expr e2, desugar_expr e3)
+  | SLet { is_rec; name; args; ty; value; body } ->
+      Let { is_rec; name; ty; value = desugar_expr value; body = desugar_expr body }
+  | SFun { arg; args; body } ->
+      let func_expr = List.fold_right (fun (x, t) acc -> Fun(x, t, acc)) args (Fun(arg, snd arg, desugar_expr body)) in
+      func_expr
+  | SApp (e1, e2) -> App(desugar_expr e1, desugar_expr e2)
+  | SBop (op, e1, e2) -> Bop(op, desugar_expr e1, desugar_expr e2)
+  | SAssert e -> Assert (desugar_expr e)
+
 (* Main desugaring function *)
 let rec desugar (p : prog) : expr =
   match p with
   | [] -> Unit
-  | decl :: rest ->
-      let func_ty = List.fold_right
-        (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
-        decl.args
-        decl.ty in
-      let func_value = 
-        match decl.args with
-        | [] -> desugar_expr decl.value
-        | _ ->
-            List.fold_right
-              (fun (x, t) acc -> Fun(x, t, acc))
-              decl.args
-              (desugar_expr decl.value)
-      in
+  | decl :: _ ->
       Let {
         is_rec = decl.is_rec;
         name = decl.name;
-        ty = func_ty;
-        value = func_value;
-        body = desugar rest  (* Changed from decl.body to desugar rest *)
+        ty = decl.ty;
+        value = desugar_expr decl.value;
+        body = desugar_expr decl.body
       }
 
 (* Type checking *)
@@ -242,23 +209,21 @@ let eval (e : expr) : value =
          | _ ->
              print_endline "If condition must be a boolean";
              failwith "If condition must be a boolean")
-   (* In eval_env function *)
-| Let { is_rec = false; name; ty = _; value; body } ->
-    print_endline ("Evaluating Let: " ^ name);
-    let v = eval_env env value in
-    let env' = Stdlib320.Env.add name v env in
-    eval_env env' body
-
-| Let { is_rec = true; name; ty = _; value; body } ->
-    print_endline ("Evaluating Let Rec: " ^ name);
-    (match value with
-     | Fun (arg, _, body') ->
-         let rec_closure = VClos { name = Some name; arg; body = body'; env } in
-         let env' = Stdlib320.Env.add name rec_closure env in
-         eval_env env' body
-     | _ -> 
-         print_endline "Let-rec must bind to a function";
-         failwith "Let-rec must bind to a function")
+    | Let { is_rec = false; name; value; body } ->
+        print_endline ("Evaluating Let: " ^ name);
+        let v = eval_env env value in
+        let env' = Stdlib320.Env.add name v env in
+        eval_env env' body
+    | Let { is_rec = true; name; value; body } ->
+        print_endline ("Evaluating Let Rec: " ^ name);
+        (match value with
+         | Fun (arg, _, body') ->
+             let rec_closure = VClos { name = Some name; arg; body = body'; env } in
+             let env' = Stdlib320.Env.add name rec_closure env in
+             eval_env env' body
+         | _ ->
+             print_endline "Let-rec must bind to a function";
+             failwith "Let-rec must bind to a function")
     | Bop (op, e1, e2) ->
         print_endline ("Evaluating Bop: " ^ string_of_bop op);
         let v1 = eval_env env e1 in
@@ -319,6 +284,12 @@ let interp (s : string) : (value, error) result =
             print_endline ("Evaluation succeeded: " ^ string_of_value v);
             Ok v
           with
+          | DivByZero ->
+              print_endline "Evaluation failed: Division by zero";
+              Error DivByZero
+          | AssertFail ->
+              print_endline "Evaluation failed: Assertion failed";
+              Error AssertFail
           | Failure msg ->
               print_endline ("Evaluation failed: " ^ msg);
               failwith msg

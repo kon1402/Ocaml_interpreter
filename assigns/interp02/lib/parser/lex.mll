@@ -4,7 +4,7 @@ open Par
 
 let whitespace = [' ' '\t' '\n' '\r']+
 let num = '-'? ['0'-'9']+
-let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
+let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'' ]*
 
 rule read =
   parse
@@ -19,18 +19,19 @@ rule read =
   | "mod" { MOD }
   | "true" { TRUE }
   | "false" { FALSE }
+  | "&&" { AND }
+  | "||" { OR }
+  | "<=" { LTE }
+  | ">=" { GTE }
+  | "<>" { NEQ }
+  | "->" { ARROW }
   | "()" { UNIT }
-  | ":" { COLON }
   | "int" { INT }
   | "bool" { BOOL }
   | "unit" { UNIT_TY }
   | "assert" { ASSERT }
-  | "<=" { LTE }
-  | ">=" { GTE }
-  | "<>" { NEQ }
-  | "&&" { AND }
-  | "||" { OR }
-  | "->" { ARROW }
+  | "(" { LPAREN }
+  | ")" { RPAREN }
   | "+" { ADD }
   | "-" { SUB }
   | "*" { MUL }
@@ -38,9 +39,9 @@ rule read =
   | "<" { LT }
   | ">" { GT }
   | "=" { EQ }
-  | "(" { LPAREN }
-  | ")" { RPAREN }
+  | ":" { COLON }
+  | "_" { VAR "_" }
   | num { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | var { VAR (Lexing.lexeme lexbuf) }
   | eof { EOF }
-  | _ { failwith ("invalid character: " ^ Lexing.lexeme lexbuf) }
+  | _ { failwith ("Invalid character: " ^ (Lexing.lexeme lexbuf)) }

@@ -8,8 +8,7 @@ let rec mk_app e = function
 
 %token <int> NUM
 %token <string> VAR
-%token UNIT
-%token TRUE FALSE
+%token UNIT TRUE FALSE
 %token LPAREN RPAREN
 %token ADD SUB MUL DIV MOD
 %token LT LTE GT GTE EQ NEQ
@@ -38,13 +37,20 @@ prog:
   | ds = list(decl) EOF { ds }
 
 decl:
+  (* Annotated declarations *)
   | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e = expr 
     { { is_rec = false; name = x; args = args; ty = t; value = e } }
-  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e = expr
-    { { is_rec = true; name = x; args = arg :: args; ty = t; value = e } }
+  | LET; REC; x = VAR; args = nonempty_list(arg); COLON; t = ty; EQ; e = expr
+    { { is_rec = true; name = x; args = args; ty = t; value = e } }
+  (* Unannotated declarations *)
+  | LET; x = VAR; EQ; e = expr 
+    { { is_rec = false; name = x; args = []; ty = BoolTy; value = e } }
+  | LET; REC; x = VAR; EQ; e = expr
+    { { is_rec = true; name = x; args = []; ty = BoolTy; value = e } }
 
 arg:
   | LPAREN; x = VAR; COLON; t = ty; RPAREN { (x, t) }
+  | x = VAR { (x, BoolTy) }
 
 ty:
   | INT { IntTy }
@@ -56,12 +62,20 @@ ty:
 expr:
   | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr 
     { SIf(e1, e2, e3) }
+  (* Let expressions *)
   | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
     { SLet{ is_rec = false; name = x; args = args; ty = t; value = e1; body = e2 } }
-  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = true; name = x; args = arg :: args; ty = t; value = e1; body = e2 } }
+  | LET; x = VAR; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = false; name = x; args = []; ty = BoolTy; value = e1; body = e2 } }
+  | LET; REC; x = VAR; args = nonempty_list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = args; ty = t; value = e1; body = e2 } }
+  | LET; REC; x = VAR; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = []; ty = BoolTy; value = e1; body = e2 } }
+  (* Functions *)
   | FUN; arg = arg; args = list(arg); ARROW; e = expr
     { SFun{ arg = arg; args = args; body = e } }
+  | FUN; x = VAR; ARROW; e = expr
+    { SFun{ arg = (x, BoolTy); args = []; body = e } }
   | e = expr2 { e }
 
 expr2:
