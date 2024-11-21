@@ -86,10 +86,15 @@ let rec desugar (p : prog) : expr =
   match p with
   | [] -> Unit
   | decl :: rest ->
-      let func_ty = List.fold_right
-        (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
-        decl.args
-        decl.ty in
+      (* Build function type correctly *)
+      let func_ty = 
+        if decl.args = [] then decl.ty
+        else List.fold_right
+          (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
+          decl.args
+          decl.ty 
+      in
+      (* Build function value correctly *)
       let func_value = 
         match decl.args with
         | [] -> desugar_expr decl.value
@@ -104,9 +109,8 @@ let rec desugar (p : prog) : expr =
         name = decl.name;
         ty = func_ty;
         value = func_value;
-        body = desugar rest  (* Changed from decl.body to desugar rest *)
+        body = desugar rest
       }
-
 (* Type checking *)
 let type_of (e : expr) : (ty, error) result =
   let rec type_of_env (env : ty Stdlib320.env) (e : expr) : (ty, error) result =
