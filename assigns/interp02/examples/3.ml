@@ -1,4 +1,7 @@
-let a = fun _ ->
-  let _ = (fun x -> x x) (fun x -> x x) in
-  true
-in false && a
+let rec fact = fun n ->
+  if n <= 0
+  then 1
+  else n * fact (n - 1)
+
+  let test : unit = assert (fact 5 = 120)
+  

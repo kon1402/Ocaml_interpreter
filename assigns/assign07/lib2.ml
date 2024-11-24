@@ -86,35 +86,18 @@ let rec desugar (p : prog) : expr =
   match p with
   | [] -> Unit
   | decl :: rest ->
-    let infer_ty e = 
-      match e with
-      | SBop(op, _, _) -> 
-          (match op with
-           | Add | Sub | Mul | Div | Mod -> IntTy
-           | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
-           | And | Or -> BoolTy)
-      | SNum _ -> IntTy
-      | STrue | SFalse -> BoolTy  (* Changed from SBool to STrue|SFalse *)
-      | _ -> IntTy
-      in
+      (* Build function type correctly *)
       let func_ty = 
-        if decl.args = [] then 
-          (match decl.value with
-           | SFun { arg = (_, _); args = []; body } -> 
-               FunTy(IntTy, infer_ty body)  (* For unannotated single-arg functions *)
-           | _ -> decl.ty)
+        if decl.args = [] then decl.ty
         else List.fold_right
           (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
           decl.args
           decl.ty 
       in
+      (* Build function value correctly *)
       let func_value = 
         match decl.args with
-        | [] -> 
-            (match decl.value with
-             | SFun { arg = (x, _); args = []; body } ->
-                 Fun(x, IntTy, desugar_expr body)  (* Use IntTy for numeric functions *)
-             | _ -> desugar_expr decl.value)
+        | [] -> desugar_expr decl.value
         | _ ->
             List.fold_right
               (fun (x, t) acc -> Fun(x, t, acc))
@@ -207,124 +190,117 @@ let type_of (e : expr) : (ty, error) result =
   type_of_env Stdlib320.Env.empty e
 
 (* Evaluation *)
-let eval expr =
-  let rec eval env e =
+let eval (e : expr) : value =
+  let rec eval_env (env : value Stdlib320.env) (e : expr) : value =
     match e with
-    | Unit -> VUnit
-    | True -> VBool true
-    | False -> VBool false
-    | Num n -> VNum n
-    | Var x -> (
-        match Env.find_opt x env with
-        | Some v -> v
-        | None -> failwith ("Unbound variable: " ^ x))
-    | If (e1, e2, e3) -> (
-        let v1 = eval env e1 in
-        match v1 with
-        | VBool true -> eval env e2
-        | VBool false -> eval env e3
-        | _ ->
-            failwith "Condition in if expression did not evaluate to a boolean")
-    | Bop (op, e1, e2) -> (
-        let v1 = eval env e1 in
-        match op with
-        | And -> (
-            match v1 with
-            | VBool false -> VBool false
-            | VBool true -> eval env e2
-            | _ -> failwith "Invalid operand for && operator")
-        | Or -> (
-            match v1 with
-            | VBool true -> VBool true
-            | VBool false -> eval env e2
-            | _ -> failwith "Invalid operand for || operator")
-        | _ ->
-            let v2 = eval env e2 in
-            eval_bop op v1 v2)
-    | Fun (x, _, body) -> VClos { name = None; arg = x; body; env }
-    | App (e1, e2) -> (
-        let v1 = eval env e1 in
-        let v2 = eval env e2 in
-        match v1 with
-        | VClos { name; arg; body; env = closure_env } ->
-            let env' = Env.add arg v2 closure_env in
-            let env' =
-              match name with
-              | Some f_name -> Env.add f_name v1 env'
-              | None -> env'
-            in
-            eval env' body
-        | _ -> failwith "Attempted to apply a non-function value")
-    | Let { is_rec; name; ty = _; value; body } ->
-        if is_rec then (
-          match value with
-          | Fun (arg_name, _, fun_body) ->
-              (* Create recursive closure directly *)
-              let rec_closure = 
-                VClos { 
-                  name = Some name;
-                  arg = arg_name;
-                  body = fun_body;
-                  env = env
-                } in
-              let env' = Env.add name rec_closure env in
-              eval env' body
-          | _ -> failwith "Recursive binding must be a function"
-        ) else (
-          let v_value = eval env value in
-          let env' = Env.add name v_value env in
-          eval env' body
-        )
-    | Assert e -> (
-        let v = eval env e in
-        match v with
-        | VBool true -> VUnit
-        | VBool false -> raise AssertFail
-        | _ -> failwith "Assertion did not evaluate to a boolean")
-  and eval_bop op v1 v2 =
-    match op, v1, v2 with
-    | (Add | Sub | Mul | Div | Mod), VNum n1, VNum n2 -> (
-        match op with
-        | Add -> VNum (n1 + n2)
-        | Sub -> VNum (n1 - n2)
-        | Mul -> VNum (n1 * n2)
-        | Div ->
-            if n2 = 0 then raise DivByZero else VNum (n1 / n2)
-        | Mod ->
-            if n2 = 0 then raise DivByZero else VNum (n1 mod n2)
-        | _ -> failwith "Invalid operator")
-    | (Lt | Lte | Gt | Gte), VNum n1, VNum n2 ->
-        let b =
-          match op with
-          | Lt -> n1 < n2
-          | Lte -> n1 <= n2
-          | Gt -> n1 > n2
-          | Gte -> n1 >= n2
-          | _ -> failwith "Invalid operator"
-        in
-        VBool b
-    | (Eq | Neq), VNum n1, VNum n2 ->
-        VBool (match op with
-              | Eq -> n1 = n2
-              | Neq -> n1 <> n2
-              | _ -> failwith "Invalid operator")
-    | (Eq | Neq), VBool b1, VBool b2 ->
-        VBool (match op with 
-              | Eq -> b1 = b2
-              | Neq -> b1 <> b2
-              | _ -> failwith "Invalid operator")
-    | (And | Or), VBool b1, VBool b2 ->
-        let b =
-          match op with
-          | And -> b1 && b2
-          | Or -> b1 || b2
-          | _ -> failwith "Invalid operator"
-        in
-        VBool b
-    | _ -> failwith "Invalid operands for operator"
-  in
-  eval Env.empty expr
+    | Unit ->
+        print_endline "Evaluating Unit";
+        VUnit
+    | True ->
+        print_endline "Evaluating True";
+        VBool true
+    | False ->
+        print_endline "Evaluating False";
+        VBool false
+    | Num n ->
+        print_endline ("Evaluating Num: " ^ string_of_int n);
+        VNum n
+    | Var x ->
+        print_endline ("Evaluating Var: " ^ x);
+        (match Stdlib320.Env.find_opt x env with
+         | Some v ->
+             print_endline ("Found variable " ^ x ^ " with value " ^ string_of_value v);
+             v
+         | None ->
+             print_endline ("Unbound variable: " ^ x);
+             failwith ("Unbound variable: " ^ x))
+    | Fun (x, _, body') ->
+        print_endline ("Evaluating Fun: " ^ x);
+        VClos { name = None; arg = x; body = body'; env }
+    | App (e1, e2) ->
+        print_endline "Evaluating App";
+        let v1 = eval_env env e1 in
+        let v2 = eval_env env e2 in
+        print_endline ("Function: " ^ string_of_value v1);
+        print_endline ("Argument: " ^ string_of_value v2);
+        (match v1 with
+         | VClos { name = None; arg; body; env = clos_env } ->
+             let env' = Stdlib320.Env.add arg v2 clos_env in
+             eval_env env' body
+         | VClos { name = Some f; arg; body; env = clos_env } ->
+             let closure = VClos { name = Some f; arg; body; env = clos_env } in
+             let env' = Stdlib320.Env.add arg v2 (Stdlib320.Env.add f closure clos_env) in
+             eval_env env' body
+         | _ ->
+             print_endline "Attempting to call a non-function value";
+             failwith "Attempting to call a non-function value")
+    | If (e1, e2, e3) ->
+        print_endline "Evaluating If";
+        (match eval_env env e1 with
+         | VBool true ->
+             print_endline "Condition is true";
+             eval_env env e2
+         | VBool false ->
+             print_endline "Condition is false";
+             eval_env env e3
+         | _ ->
+             print_endline "If condition must be a boolean";
+             failwith "If condition must be a boolean")
+   (* In eval_env function *)
+| Let { is_rec = false; name; ty = _; value; body } ->
+    print_endline ("Evaluating Let: " ^ name);
+    let v = eval_env env value in
+    let env' = Stdlib320.Env.add name v env in
+    eval_env env' body
 
+| Let { is_rec = true; name; ty = _; value; body } ->
+    print_endline ("Evaluating Let Rec: " ^ name);
+    (match value with
+     | Fun (arg, _, body') ->
+         let rec_closure = VClos { name = Some name; arg; body = body'; env } in
+         let env' = Stdlib320.Env.add name rec_closure env in
+         eval_env env' body
+     | _ -> 
+         print_endline "Let-rec must bind to a function";
+         failwith "Let-rec must bind to a function")
+    | Bop (op, e1, e2) ->
+        print_endline ("Evaluating Bop: " ^ string_of_bop op);
+        let v1 = eval_env env e1 in
+        let v2 = eval_env env e2 in
+        print_endline ("Operands: " ^ string_of_value v1 ^ ", " ^ string_of_value v2);
+        (match (op, v1, v2) with
+         | (Add, VNum n1, VNum n2) -> VNum (n1 + n2)
+         | (Sub, VNum n1, VNum n2) -> VNum (n1 - n2)
+         | (Mul, VNum n1, VNum n2) -> VNum (n1 * n2)
+         | (Div, VNum n1, VNum n2) ->
+             if n2 = 0 then raise DivByZero else VNum (n1 / n2)
+         | (Mod, VNum n1, VNum n2) ->
+             if n2 = 0 then raise DivByZero else VNum (n1 mod n2)
+         | (Lt, VNum n1, VNum n2) -> VBool (n1 < n2)
+         | (Lte, VNum n1, VNum n2) -> VBool (n1 <= n2)
+         | (Gt, VNum n1, VNum n2) -> VBool (n1 > n2)
+         | (Gte, VNum n1, VNum n2) -> VBool (n1 >= n2)
+         | (Eq, VNum n1, VNum n2) -> VBool (n1 = n2)
+         | (Neq, VNum n1, VNum n2) -> VBool (n1 <> n2)
+         | (And, VBool b1, VBool b2) -> VBool (b1 && b2)
+         | (Or, VBool b1, VBool b2) -> VBool (b1 || b2)
+         | _ ->
+             print_endline "Invalid operands for binary operator";
+             failwith "Invalid operands for binary operator")
+    | Assert e ->
+        print_endline "Evaluating Assert";
+        (match eval_env env e with
+         | VBool true ->
+             print_endline "Assertion succeeded";
+             VUnit
+         | VBool false ->
+             print_endline "Assertion failed";
+             raise AssertFail
+         | _ ->
+             print_endline "Assert expression must evaluate to a boolean";
+             failwith "Assert expression must evaluate to a boolean")
+  in
+  eval_env Stdlib320.Env.empty e
 
 (* Interpreter *)
 let interp (s : string) : (value, error) result =
