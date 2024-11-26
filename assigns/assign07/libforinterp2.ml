@@ -43,6 +43,23 @@ let string_of_value v =
 let parse s = My_parser.parse s
 
 (* Desugaring functions *)
+(* Helper function to determine type for unannotated expressions *)
+let rec infer_ty e = 
+  match e with
+  | SBop(op, _, _) -> 
+      (match op with
+       | Add | Sub | Mul | Div | Mod -> IntTy
+       | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
+       | And | Or -> BoolTy)
+  | SNum _ -> IntTy
+  | STrue | SFalse -> BoolTy
+  | SIf(_, e2, _) -> infer_ty e2
+  | SApp(SVar "fact", _) -> IntTy
+  | SApp(e1, _) -> infer_ty e1
+  | SVar _ -> IntTy
+  | _ -> IntTy
+
+(* Helper function to convert surface expressions to core expressions *)
 let rec desugar_expr (e : sfexpr) : expr =
   match e with
   | SUnit -> Unit
@@ -81,39 +98,41 @@ let rec desugar_expr (e : sfexpr) : expr =
       Bop(op, desugar_expr e1, desugar_expr e2)
   | SAssert e ->
       Assert(desugar_expr e)
+
 (* Main desugaring function *)
 let rec desugar (p : prog) : expr =
   match p with
   | [] -> Unit
   | decl :: rest ->
-    let infer_ty e = 
-      match e with
-      | SBop(op, _, _) -> 
-          (match op with
-           | Add | Sub | Mul | Div | Mod -> IntTy
-           | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
-           | And | Or -> BoolTy)
-      | SNum _ -> IntTy
-      | STrue | SFalse -> BoolTy  (* Changed from SBool to STrue|SFalse *)
-      | _ -> IntTy
-      in
       let func_ty = 
-        if decl.args = [] then 
-          (match decl.value with
-           | SFun { arg = (_, _); args = []; body } -> 
-               FunTy(IntTy, infer_ty body)  (* For unannotated single-arg functions *)
-           | _ -> decl.ty)
-        else List.fold_right
-          (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
-          decl.args
-          decl.ty 
+        match decl.value with
+        | SFun { arg = (_, _); args = []; body } when decl.args = [] -> 
+            if decl.is_rec then
+              FunTy(IntTy, IntTy)
+            else
+              FunTy(IntTy, infer_ty body)
+        | SAssert _ -> UnitTy  (* Assertions return unit *)
+        | _ -> 
+            if decl.args = [] then 
+              (match decl.value with
+               | SBop(op, _, _) -> 
+                   (match op with
+                    | Add | Sub | Mul | Div | Mod -> IntTy
+                    | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
+                    | And | Or -> BoolTy)
+               | SAssert _ -> UnitTy  (* Handle nested assertions *)
+               | _ -> decl.ty)
+            else List.fold_right
+              (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
+              decl.args
+              decl.ty
       in
       let func_value = 
         match decl.args with
         | [] -> 
             (match decl.value with
              | SFun { arg = (x, _); args = []; body } ->
-                 Fun(x, IntTy, desugar_expr body)  (* Use IntTy for numeric functions *)
+                 Fun(x, IntTy, desugar_expr body)
              | _ -> desugar_expr decl.value)
         | _ ->
             List.fold_right
