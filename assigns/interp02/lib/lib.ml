@@ -59,54 +59,49 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SAssert e ->
       Assert(desugar_expr e)
 
-let rec desugar (p : prog) : expr =
-  match p with
-  | [] -> Unit
-  | decl :: rest ->
-      let func_ty = 
-        match decl.value with
-        | SFun { arg = (_, _); args = []; body } when decl.args = [] -> 
-            if decl.is_rec then
-              FunTy(IntTy, IntTy)
-            else
-              FunTy(IntTy, infer_ty body)
-        | SAssert _ -> UnitTy
-        | _ -> 
-            if decl.args = [] then
-              (match decl.value with
-               | SBop(op, _, _) -> 
-                   (match op with
-                    | Add | Sub | Mul | Div | Mod -> IntTy
-                    | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
-                    | And | Or -> BoolTy)
-               | SAssert _ -> UnitTy
-               | _ -> decl.ty)
-            else List.fold_right
-              (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
-              decl.args
-              decl.ty
-      in
-      let func_value = 
-        match decl.args with
-        | [] -> 
-            (match decl.value with
-             | SFun { arg = (x, _); args = []; body } ->
-                 Fun(x, IntTy, desugar_expr body)
-             | _ -> desugar_expr decl.value)
-        | _ ->
-            List.fold_right
-              (fun (x, t) acc -> Fun(x, t, acc))
-              decl.args
-              (desugar_expr decl.value)
-      in
-      Let {
-        is_rec = decl.is_rec;
-        name = decl.name;
-        ty = func_ty;
-        value = func_value;
-        body = desugar rest
-      }
-
+      let rec desugar (p : prog) : expr =
+        match p with
+        | [] -> Unit  (* End of top-level declarations ends with unit *)
+        | decl :: rest ->
+            let func_ty = 
+              if decl.args = [] then 
+                (match decl.value with
+                 | SFun { arg = (_, _); args = []; body } -> 
+                     if decl.is_rec then
+                       FunTy(IntTy, IntTy)  (* Recursive functions like factorial *)
+                     else
+                       FunTy(IntTy, infer_ty body)
+                 | _ -> decl.ty)
+              else 
+                (* Convert multi-argument function type to curried form *)
+                List.fold_right
+                  (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
+                  decl.args
+                  decl.ty
+            in
+            let func_value = 
+              match decl.args with
+              | [] -> 
+                  (match decl.value with
+                   | SFun { arg = (x, _); args = []; body } ->
+                       (* Single argument function *)
+                       Fun(x, IntTy, desugar_expr body)
+                   | _ -> desugar_expr decl.value)
+              | _ ->
+                  (* Convert multi-argument function to curried form *)
+                  List.fold_right
+                    (fun (x, t) acc -> Fun(x, t, acc))
+                    decl.args
+                    (desugar_expr decl.value)
+            in
+            (* Create nested let expressions *)
+            Let {
+              is_rec = decl.is_rec;
+              name = decl.name;
+              ty = func_ty;
+              value = func_value;
+              body = desugar rest  (* Recursively process remaining declarations *)
+            }
 let type_of (e : expr) : (ty, error) result =
   let rec type_of_env (env : ty Stdlib320.env) (e : expr) : (ty, error) result =
     match e with
