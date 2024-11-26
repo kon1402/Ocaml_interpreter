@@ -1,10 +1,8 @@
 open Utils
 
-(* Exception definitions *)
-exception DivByZero
 exception AssertFail
-      
-(* Parsing *)
+exception DivByZero
+
 let parse s = My_parser.parse s
 
 let rec infer_ty e = 
@@ -68,13 +66,21 @@ let rec desugar (p : prog) : expr =
       let func_ty = 
         match decl.value with
         | SFun { arg = (_, _); args = []; body } when decl.args = [] -> 
-            let ret_ty = infer_ty body in
             if decl.is_rec then
-              FunTy(IntTy, ret_ty)
+              FunTy(IntTy, IntTy)
             else
-              FunTy(IntTy, ret_ty)
+              FunTy(IntTy, infer_ty body)
+        | SAssert _ -> UnitTy
         | _ -> 
-            if decl.args = [] then decl.ty
+            if decl.args = [] then
+              (match decl.value with
+               | SBop(op, _, _) -> 
+                   (match op with
+                    | Add | Sub | Mul | Div | Mod -> IntTy
+                    | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
+                    | And | Or -> BoolTy)
+               | SAssert _ -> UnitTy
+               | _ -> decl.ty)
             else List.fold_right
               (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
               decl.args

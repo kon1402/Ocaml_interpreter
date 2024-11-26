@@ -36,29 +36,16 @@ let rec mk_app e = function
 %%
 
 prog:
-  | e = expr EOF 
-    { [{ is_rec = false; 
-         name = "_"; 
-         args = []; 
-         ty = IntTy; 
-         value = e }] }
-  | ds = nonempty_list(decl) EOF { ds }
+  | ds = list(toplet) EOF { ds }
 
-decl:
-  (* Annotated declarations *)
+toplet:
   | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e = expr 
     { { is_rec = false; name = x; args = args; ty = t; value = e } }
-  | LET; REC; x = VAR; args = nonempty_list(arg); COLON; t = ty; EQ; e = expr
-    { { is_rec = true; name = x; args = args; ty = t; value = e } }
-  (* Unannotated declarations *)
-  | LET; x = VAR; EQ; e = expr 
-    { { is_rec = false; name = x; args = []; ty = IntTy; value = e } }
-  | LET; REC; x = VAR; EQ; e = expr
-    { { is_rec = true; name = x; args = []; ty = IntTy; value = e } }
+  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e = expr
+    { { is_rec = true; name = x; args = arg :: args; ty = t; value = e } }
 
 arg:
   | LPAREN; x = VAR; COLON; t = ty; RPAREN { (x, t) }
-  | x = VAR { (x, IntTy) }
 
 ty:
   | INT { IntTy }
@@ -72,10 +59,8 @@ expr:
     { SIf(e1, e2, e3) }
   | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
     { SLet{ is_rec = false; name = x; args = args; ty = t; value = e1; body = e2 } }
-  | LET; x = VAR; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = false; name = x; args = []; ty = IntTy; value = e1; body = e2 } }
-  | LET; REC; x = VAR; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = true; name = x; args = []; ty = IntTy; value = e1; body = e2 } }
+  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = arg :: args; ty = t; value = e1; body = e2 } }
   | FUN; arg = arg; args = list(arg); ARROW; e = expr
     { SFun{ arg = arg; args = args; body = e } }
   | FUN; x = VAR; ARROW; e = expr
