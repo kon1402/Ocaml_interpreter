@@ -72,10 +72,10 @@ expr:
   | IF e1 = expr THEN e2 = expr ELSE e3 = expr { SIf (e1, e2, e3) }
 
   /* Function definition with multiple arguments */
-  | FUN args = list(arg) ARROW e = expr {
-      List.fold_right (fun (x, ty) acc -> SFun { arg = (x, ty); args = []; body = acc }) args e
-    }
-
+  | FUN; arg = arg; args = list(arg); ARROW; e = expr
+    { SFun{ arg = arg; args = args; body = e } }
+  | FUN; x = VAR; ARROW; e = expr
+    { SFun{ arg = (x, BoolTy); args = []; body = e } }
   | e = expr2 { e }
 
 expr2:
