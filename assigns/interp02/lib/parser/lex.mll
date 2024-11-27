@@ -1,8 +1,8 @@
-(* lex.mll *)
+
 {
 open Par
 }
-(* Regular expressions given in spec*)
+
 let whitespace = [' ' '\t' '\n' '\r']+
 let num = '-'? ['0'-'9']+
 let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
@@ -10,7 +10,6 @@ let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
 rule read =
   parse
   | whitespace { read lexbuf }
-  (* Keywords and multi-character operators *)
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
@@ -32,10 +31,10 @@ rule read =
   | "bool" { BOOL }
   | "unit" { UNIT }
   | "assert" { ASSERT }
-  (* Single-character tokens *)
   | ":" { COLON }
   | "=" { EQ }
   | "+" { ADD }
+  | "-" { SUB }
   | "*" { MUL }
   | "/" { DIV }
   | "<" { LT }
@@ -43,9 +42,7 @@ rule read =
   | "(" { LPAREN }
   | ")" { RPAREN }
   | "_" { VAR "_" }
-  (* Numbers and identifiers *)
   | num { NUM (int_of_string (Lexing.lexeme lexbuf)) }
   | var { VAR (Lexing.lexeme lexbuf) }
-  | "-" { SUB } 
   | eof { EOF }
   | _ { failwith ("Invalid character: " ^ Lexing.lexeme lexbuf) }
