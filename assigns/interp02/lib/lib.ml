@@ -16,7 +16,7 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SNum n -> Num n
   | SVar x -> Var x
   | SFun { arg = (x, t); args = more_args; body } ->
-      (* Rule 3: Convert multi-argument functions to curried form *)
+      (* Convert multi-argument functions to curried form *)
       let fun_expr = desugar_expr body in
       List.fold_right
         (fun (x, t) acc -> Fun(x, t, acc))
@@ -25,7 +25,7 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SApp (e1, e2) ->
       App(desugar_expr e1, desugar_expr e2)
   | SLet { is_rec; name; args; ty; value; body } ->
-      (* Rule 2: Convert let-with-arguments to let-with-function *)
+      (* Convert let-with-arguments to let-with-function *)
       let desugared_value =
         if args = [] then
           desugar_expr value
@@ -53,9 +53,9 @@ let rec desugar_expr (e : sfexpr) : expr =
 (* Main desugaring function *)
 let rec desugar (p : prog) : expr =
   match p with
-  | [] -> Unit  (* Rule 1: End with unit *)
+  | [] -> Unit  (* End with unit *)
   | decl :: rest ->
-      (* Rule 2: Convert let-with-arguments to let-with-function *)
+      (* Convert let-with-arguments to let-with-function *)
       let desugared_value =
         if decl.args = [] then
           desugar_expr decl.value
@@ -69,7 +69,7 @@ let rec desugar (p : prog) : expr =
       Let {
         is_rec = decl.is_rec;
         name = decl.name;
-        ty = decl.ty;  (* Use the type from the declaration *)
+        ty = decl.ty;
         value = desugared_value;
         body = desugar rest
       }
@@ -168,12 +168,12 @@ let eval (e : expr) : value =
              let closure = VClos { name = Some f; arg; body; env = clos_env } in
              let env' = Stdlib320.Env.add arg v2 (Stdlib320.Env.add f closure clos_env) in
              eval_env env' body
-         | _ -> failwith "Attempting to call a non-function value")
+         | _ -> failwith "Weird attempt to apply a non-function")
     | If (e1, e2, e3) ->
         (match eval_env env e1 with
          | VBool true -> eval_env env e2
          | VBool false -> eval_env env e3
-         | _ -> failwith "If condition must be a boolean")
+         | _ -> failwith "If condition must be a BOOL")
     | Let { is_rec = false; name; ty = _; value; body } ->
         let v = eval_env env value in
         let env' = Stdlib320.Env.add name v env in
@@ -206,12 +206,12 @@ let eval (e : expr) : value =
          | (Neq, VNum n1, VNum n2) -> VBool (n1 <> n2)
          | (And, VBool b1, VBool b2) -> VBool (b1 && b2)
          | (Or, VBool b1, VBool b2) -> VBool (b1 || b2)
-         | _ -> failwith "Invalid operands for binary operator")
+         | _ -> failwith "Invalid operands for BOP")
     | Assert e ->
         (match eval_env env e with
          | VBool true -> VUnit
          | VBool false -> raise AssertFail
-         | _ -> failwith "Assert expression must evaluate to a boolean")
+         | _ -> failwith "Assert expression must evaluate to BOOL")
   in
   eval_env Stdlib320.Env.empty e
 

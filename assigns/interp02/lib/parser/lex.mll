@@ -1,5 +1,4 @@
 (* lex.mll *)
-
 {
 open Par
 }
