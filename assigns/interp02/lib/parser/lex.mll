@@ -3,7 +3,7 @@
 {
 open Par
 }
-
+(* Regular expressions given in spec*)
 let whitespace = [' ' '\t' '\n' '\r']+
 let num = '-'? ['0'-'9']+
 let var = ['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_' '\'']*
