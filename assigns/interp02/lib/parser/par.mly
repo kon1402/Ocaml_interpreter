@@ -42,6 +42,12 @@ toplet:
       let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
       { is_rec = true; name = x; args = args; ty = full_ty; value = e }
     }
+  | LET; x = VAR; EQ; e = expr 
+    { { is_rec = false; name = x; args = []; ty = BoolTy; value = e } }
+  | LET; REC; x = VAR; EQ; e = expr
+    { { is_rec = true; name = x; args = []; ty = BoolTy; value = e } }
+  | LET; REC; x = VAR; args = nonempty_list(VAR); EQ; e = expr
+    { { is_rec = true; name = x; args = List.map (fun x -> (x, BoolTy)) args; ty = BoolTy; value = e } }
 
 /* Argument for functions */
 arg:
