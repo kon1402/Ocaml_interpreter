@@ -31,7 +31,7 @@ rule read =
   | "()" { UNIT }
   | "int" { INT }
   | "bool" { BOOL }
-  | "unit" { UNIT_TY }
+  | "unit" { UNIT }
   | "assert" { ASSERT }
   (* Single-character tokens *)
   | ":" { COLON }

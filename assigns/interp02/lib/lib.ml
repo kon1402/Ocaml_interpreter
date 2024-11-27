@@ -2,24 +2,12 @@ open Utils
 
 exception AssertFail
 exception DivByZero
-
+(* Parsing *)
 let parse s = My_parser.parse s
 
-let rec infer_ty e = 
-  match e with
-  | SBop(op, _, _) -> 
-      (match op with
-       | Add | Sub | Mul | Div | Mod -> IntTy
-       | Lt | Lte | Gt | Gte | Eq | Neq -> BoolTy
-       | And | Or -> BoolTy)
-  | SNum _ -> IntTy
-  | STrue | SFalse -> BoolTy
-  | SIf(_, e2, _) -> infer_ty e2
-  | SApp(SVar "fact", _) -> IntTy
-  | SApp(e1, _) -> infer_ty e1
-  | SVar _ -> IntTy
-  | _ -> IntTy
+(* Desugaring functions *)
 
+(* Helper function to convert surface expressions to core expressions *)
 let rec desugar_expr (e : sfexpr) : expr =
   match e with
   | SUnit -> Unit
@@ -28,28 +16,31 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SNum n -> Num n
   | SVar x -> Var x
   | SFun { arg = (x, t); args = more_args; body } ->
-      let base = Fun(x, t, desugar_expr body) in
+      (* Rule 3: Convert multi-argument functions to curried form *)
+      let fun_expr = desugar_expr body in
       List.fold_right
         (fun (x, t) acc -> Fun(x, t, acc))
-        more_args
-        base
+        ((x, t) :: more_args)
+        fun_expr
   | SApp (e1, e2) ->
       App(desugar_expr e1, desugar_expr e2)
   | SLet { is_rec; name; args; ty; value; body } ->
-      let func_value = 
-        match args with
-        | [] -> desugar_expr value
-        | _ ->
-            List.fold_right
-              (fun (x, t) acc -> Fun(x, t, acc))
-              args
-              (desugar_expr value)
+      (* Rule 2: Convert let-with-arguments to let-with-function *)
+      let desugared_value =
+        if args = [] then
+          desugar_expr value
+        else
+          let fun_expr = desugar_expr value in
+          List.fold_right
+            (fun (x, t) acc -> Fun(x, t, acc))
+            args
+            fun_expr
       in
       Let {
         is_rec;
         name;
         ty;
-        value = func_value;
+        value = desugared_value;
         body = desugar_expr body
       }
   | SIf (e1, e2, e3) ->
@@ -59,49 +50,30 @@ let rec desugar_expr (e : sfexpr) : expr =
   | SAssert e ->
       Assert(desugar_expr e)
 
-      let rec desugar (p : prog) : expr =
-        match p with
-        | [] -> Unit  (* End of top-level declarations ends with unit *)
-        | decl :: rest ->
-            let func_ty = 
-              if decl.args = [] then 
-                (match decl.value with
-                 | SFun { arg = (_, _); args = []; body } -> 
-                     if decl.is_rec then
-                       FunTy(IntTy, IntTy)  (* Recursive functions like factorial *)
-                     else
-                       FunTy(IntTy, infer_ty body)
-                 | _ -> decl.ty)
-              else 
-                (* Convert multi-argument function type to curried form *)
-                List.fold_right
-                  (fun (_, arg_ty) ret_ty -> FunTy(arg_ty, ret_ty))
-                  decl.args
-                  decl.ty
-            in
-            let func_value = 
-              match decl.args with
-              | [] -> 
-                  (match decl.value with
-                   | SFun { arg = (x, _); args = []; body } ->
-                       (* Single argument function *)
-                       Fun(x, IntTy, desugar_expr body)
-                   | _ -> desugar_expr decl.value)
-              | _ ->
-                  (* Convert multi-argument function to curried form *)
-                  List.fold_right
-                    (fun (x, t) acc -> Fun(x, t, acc))
-                    decl.args
-                    (desugar_expr decl.value)
-            in
-            (* Create nested let expressions *)
-            Let {
-              is_rec = decl.is_rec;
-              name = decl.name;
-              ty = func_ty;
-              value = func_value;
-              body = desugar rest  (* Recursively process remaining declarations *)
-            }
+(* Main desugaring function *)
+let rec desugar (p : prog) : expr =
+  match p with
+  | [] -> Unit  (* Rule 1: End with unit *)
+  | decl :: rest ->
+      (* Rule 2: Convert let-with-arguments to let-with-function *)
+      let desugared_value =
+        if decl.args = [] then
+          desugar_expr decl.value
+        else
+          let fun_expr = desugar_expr decl.value in
+          List.fold_right
+            (fun (x, t) acc -> Fun(x, t, acc))
+            decl.args
+            fun_expr
+      in
+      Let {
+        is_rec = decl.is_rec;
+        name = decl.name;
+        ty = decl.ty;  (* Use the type from the declaration *)
+        value = desugared_value;
+        body = desugar rest
+      }
+
 let type_of (e : expr) : (ty, error) result =
   let rec type_of_env (env : ty Stdlib320.env) (e : expr) : (ty, error) result =
     match e with

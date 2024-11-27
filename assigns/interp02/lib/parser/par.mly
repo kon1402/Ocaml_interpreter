@@ -6,98 +6,110 @@ let rec mk_app e = function
   | x :: es -> mk_app (SApp (e, x)) es
 %}
 
+(* token declarations *)
 %token <int> NUM
 %token <string> VAR
-%token UNIT TRUE FALSE
-%token LPAREN RPAREN
-%token ADD SUB MUL DIV MOD
-%token LT LTE GT GTE EQ NEQ
-%token AND OR
 %token IF THEN ELSE
 %token LET IN
-%token FUN ARROW
-%token REC
-%token COLON
-%token INT BOOL UNIT_TY
-%token ASSERT
+%token FUN REC ARROW
+%token ADD SUB MUL DIV MOD
+%token LT LTE GT GTE EQ NEQ AND OR
+%token UNIT TRUE FALSE
+%token LPAREN RPAREN
+%token ASSERT COLON INT BOOL
 %token EOF
 
-%nonassoc IN
-%right ARROW
+/* operator precedence and associativity */
 %right OR
 %right AND
-%nonassoc EQ NEQ
-%nonassoc LT LTE GT GTE
+%left LT LTE GT GTE EQ NEQ
 %left ADD SUB
 %left MUL DIV MOD
+%right ARROW
 
-%start <Utils.prog> prog
+%start <prog> prog
 
 %%
 
+(* Entry point for the program *)
 prog:
-  | ds = list(toplet) EOF { ds }
+  | list(toplet) EOF { $1 }
 
+(* Top-level let and let rec expressions *)
 toplet:
-  | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e = expr 
-    { { is_rec = false; name = x; args = args; ty = t; value = e } }
-  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e = expr
-    { { is_rec = true; name = x; args = arg :: args; ty = t; value = e } }
-  | LET; REC; x = VAR; EQ; FUN; arg = VAR; ARROW; e = expr
-    { { is_rec = true; name = x; args = []; ty = FunTy(IntTy, IntTy); 
-        value = SFun{ arg = (arg, IntTy); args = []; body = e } } }
-arg:
-  | LPAREN; x = VAR; COLON; t = ty; RPAREN { (x, t) }
-  | x = VAR { (x, IntTy) }
+  | LET x = VAR args = list(arg) COLON ty = ty EQ e = expr {
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      { is_rec = false; name = x; args = args; ty = full_ty; value = e }
+    }
+  | LET REC x = VAR args = list(arg) COLON ty = ty EQ e = expr {
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      { is_rec = true; name = x; args = args; ty = full_ty; value = e }
+    }
 
+(* Argument for functions *)
+arg:
+  | LPAREN x = VAR COLON ty = ty RPAREN { (x, ty) }
+
+(* Type definitions *)
 ty:
   | INT { IntTy }
   | BOOL { BoolTy }
-  | UNIT_TY { UnitTy }
-  | t1 = ty; ARROW; t2 = ty { FunTy(t1, t2) }
-  | LPAREN; t = ty; RPAREN { t }
+  | UNIT { UnitTy }
+  | t1 = ty ARROW t2 = ty { FunTy (t1, t2) }
+  | LPAREN t = ty RPAREN { t }
 
+(* Expressions *)
 expr:
-  | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr 
-    { SIf(e1, e2, e3) }
-  | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = false; name = x; args = args; ty = t; value = e1; body = e2 } }
-  | LET; x = VAR; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = false; name = x; args = []; ty = IntTy; value = e1; body = e2 } }
-  | LET; REC; x = VAR; arg = arg; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = true; name = x; args = arg :: args; ty = t; value = e1; body = e2 } }
-  | LET; REC; x = VAR; EQ; e1 = expr; IN; e2 = expr
-    { SLet{ is_rec = true; name = x; args = []; ty = IntTy; value = e1; body = e2 } }
-  | FUN; arg = arg; args = list(arg); ARROW; e = expr
-    { SFun{ arg = arg; args = args; body = e } }
-  | FUN; x = VAR; ARROW; e = expr
-    { SFun{ arg = (x, IntTy); args = []; body = e } }
+  (* Let and Let Rec expressions *)
+  | LET x = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
+      (* Compute the full function type *)
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      SLet { is_rec = false; name = x; args = args; ty = full_ty; value = e1; body = e2 }
+    }
+  | LET REC f = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
+      (* Compute the full function type *)
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      SLet { is_rec = true; name = f; args = args; ty = full_ty; value = e1; body = e2 }
+    }
+  
+  (* Conditional Expression *)
+  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { SIf (e1, e2, e3) }
+  
+  (* Function definition with multiple arguments *)
+  | FUN args = list(arg) ARROW e = 
+  expr { List.fold_right (fun (x, ty) acc -> SFun { arg = (x, ty); args = []; body = acc }) args e }
+  
+  
+  (* Base expression *)
   | e = expr2 { e }
 
+(* Expression with binary operators and assertions *)
 expr2:
-  | e1 = expr2; op = bop; e2 = expr2 { SBop(op, e1, e2) }
-  | ASSERT; e = expr3 { SAssert e }
-  | e = expr3; es = expr3* { mk_app e es }
+  | e1 = expr2 op = bop e2 = expr2 { SBop(op, e1, e2) }
+  | ASSERT e = expr3 { SAssert e }
+  | e = expr3 es = expr3* { mk_app e es }
 
+(* Core expressions like literals, variables, and parentheses *)
 expr3:
   | UNIT { SUnit }
   | TRUE { STrue }
   | FALSE { SFalse }
   | n = NUM { SNum n }
   | x = VAR { SVar x }
-  | LPAREN; e = expr; RPAREN { e }
+  | LPAREN e = expr RPAREN { e }
 
+(* Binary operators for expressions *)
 %inline bop:
-  | ADD { Add }
-  | SUB { Sub }
-  | MUL { Mul }
-  | DIV { Div }
+  | ADD { Add } 
+  | SUB { Sub } 
+  | MUL { Mul } 
+  | DIV { Div } 
   | MOD { Mod }
-  | LT { Lt }
-  | LTE { Lte }
-  | GT { Gt }
-  | GTE { Gte }
-  | EQ { Eq }
+  | LT { Lt } 
+  | LTE { Lte } 
+  | GT { Gt } 
+  | GTE { Gte } 
+  | EQ { Eq } 
   | NEQ { Neq }
-  | AND { And }
+  | AND { And } 
   | OR { Or }
