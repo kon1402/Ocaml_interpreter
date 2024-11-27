@@ -46,6 +46,7 @@ toplet:
 /* Argument for functions */
 arg:
   | LPAREN x = VAR COLON ty = ty RPAREN { (x, ty) }
+  | x = VAR { (x, BoolTy) }
 
 /* Type definitions */
 ty:
@@ -57,15 +58,27 @@ ty:
 
 /* Expressions */
 expr:
-  | LET x = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
-
-      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      SLet { is_rec = false; name = x; args = args; ty = full_ty; value = e1; body = e2 }
-    }
-  | LET REC f = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
-      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      SLet { is_rec = true; name = f; args = args; ty = full_ty; value = e1; body = e2 }
-    }
+   | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr 
+    { SIf(e1, e2, e3) }
+  (* Annotated let *)
+  | LET; x = VAR; args = list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = false; name = x; args = args; ty = t; value = e1; body = e2 } }
+  (* Unannotated let *)
+  | LET; x = VAR; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = false; name = x; args = []; ty = BoolTy; value = e1; body = e2 } }
+  (* Recursive let *)
+  | LET; REC; x = VAR; args = nonempty_list(arg); COLON; t = ty; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = args; ty = t; value = e1; body = e2 } }
+  | LET; REC; x = VAR; EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = []; ty = BoolTy; value = e1; body = e2 } }
+  | LET; REC; x = VAR; args = nonempty_list(VAR); EQ; e1 = expr; IN; e2 = expr
+    { SLet{ is_rec = true; name = x; args = List.map (fun x -> (x, BoolTy)) args; ty = BoolTy; value = e1; body = e2 } }
+  (* Functions *)
+  | FUN; arg = arg; args = list(arg); ARROW; e = expr
+    { SFun{ arg = arg; args = args; body = e } }
+  | FUN; x = VAR; ARROW; e = expr
+    { SFun{ arg = (x, BoolTy); args = []; body = e } }
+  | e = expr2 { e }
 
   /* Conditional Expression */
   | IF e1 = expr THEN e2 = expr ELSE e3 = expr { SIf (e1, e2, e3) }
