@@ -1,12 +1,12 @@
-/* par.mly */
-
 %{
 open Utils
 
-
+let rec mk_app e = function
+  | [] -> e
+  | x :: es -> mk_app (SApp (e, x)) es
 %}
 
-/* Token declarations */
+/* token declarations */
 %token <int> NUM
 %token <string> VAR
 %token IF THEN ELSE
@@ -19,13 +19,11 @@ open Utils
 %token ASSERT COLON INT BOOL
 %token EOF
 
-/* Operator precedence and associativity */
+%right OR
+%right AND
+%left LT LTE GT GTE EQ NEQ
 %left ADD SUB
 %left MUL DIV MOD
-%left LT LTE GT GTE EQ NEQ
-%right AND
-%right OR
-%left APP  /* Function application */
 %right ARROW
 
 %start <prog> prog
@@ -33,116 +31,76 @@ open Utils
 %%
 
 prog:
-  | toplet_list EOF { $1 }
-
-toplet_list:
-  | /* empty */ { [] }
-  | toplet_list toplet { $1 @ [$2] }
+  | list(toplet) EOF { $1 }
 
 toplet:
-  | LET x=VAR args=arg_list COLON ty=ty EQ e=expr {
+  | LET x = VAR args = list(arg) COLON ty = ty EQ e = expr {
       let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      { is_rec=false; name=x; args=args; ty=full_ty; value=e }
+      { is_rec = false; name = x; args = args; ty = full_ty; value = e }
     }
-  | LET REC x=VAR args=arg_list COLON ty=ty EQ e=expr {
+  | LET REC x = VAR args = list(arg) COLON ty = ty EQ e = expr {
       let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      { is_rec=true; name=x; args=args; ty=full_ty; value=e }
-    }
-  | LET x=VAR EQ e=expr {
-      { is_rec=false; name=x; args=[]; ty=BoolTy; value=e }
-    }
-  | LET REC x=VAR EQ e=expr {
-      { is_rec=true; name=x; args=[]; ty=BoolTy; value=e }
-    }
-  | LET REC x=VAR vars=nonempty_var_list EQ e=expr {
-      let args = List.map (fun x -> (x, BoolTy)) vars in
-      { is_rec=true; name=x; args=args; ty=BoolTy; value=e }
+      { is_rec = true; name = x; args = args; ty = full_ty; value = e }
     }
 
-arg_list:
-  | /* empty */ { [] }
-  | arg_list arg { $1 @ [$2] }
-
-nonempty_var_list:
-  | x=VAR { [x] }
-  | nonempty_var_list x=VAR { $1 @ [x] }
-
+/* Argument for functions */
 arg:
-  | LPAREN x=VAR COLON ty=ty RPAREN { (x, ty) }
-  | x=VAR { (x, BoolTy) }
+  | LPAREN x = VAR COLON ty = ty RPAREN { (x, ty) }
 
+/* Type definitions */
 ty:
   | INT { IntTy }
   | BOOL { BoolTy }
   | UNIT { UnitTy }
-  | t1=ty ARROW t2=ty { FunTy (t1, t2) }
-  | LPAREN ty=ty RPAREN { ty }
+  | t1 = ty ARROW t2 = ty { FunTy (t1, t2) }
+  | LPAREN t = ty RPAREN { t }
 
+/* Expressions */
 expr:
-  | LET x=VAR args=arg_list COLON ty=ty EQ e1=expr IN e2=expr {
-      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      SLet { is_rec=false; name=x; args=args; ty=full_ty; value=e1; body=e2 }
-    }
-  | LET REC x=VAR args=arg_list COLON ty=ty EQ e1=expr IN e2=expr {
-      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
-      SLet { is_rec=true; name=x; args=args; ty=full_ty; value=e1; body=e2 }
-    }
-  | LET x=VAR EQ e1=expr IN e2=expr {
-      SLet { is_rec=false; name=x; args=[]; ty=BoolTy; value=e1; body=e2 }
-    }
-  | LET REC x=VAR EQ e1=expr IN e2=expr {
-      SLet { is_rec=true; name=x; args=[]; ty=BoolTy; value=e1; body=e2 }
-    }
-  | LET REC x=VAR vars=nonempty_var_list EQ e1=expr IN e2=expr {
-      let args = List.map (fun x -> (x, BoolTy)) vars in
-      SLet { is_rec=true; name=x; args=args; ty=BoolTy; value=e1; body=e2 }
-    }
-  | IF e1=expr THEN e2=expr ELSE e3=expr { SIf (e1, e2, e3) }
-  | FUN arg=arg args=arg_list ARROW e=expr {
-      List.fold_right (fun (x, ty) acc -> SFun { arg=(x, ty); args=[]; body=acc }) (arg :: args) e
-    }
-  | ASSERT e=expr { SAssert e }
-  | expr0 { $1 }
+  | LET x = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
 
-expr0:
-  | expr0 OR expr1 { SBop(Or, $1, $3) }
-  | expr1 { $1 }
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      SLet { is_rec = false; name = x; args = args; ty = full_ty; value = e1; body = e2 }
+    }
+  | LET REC f = VAR args = list(arg) COLON ty = ty EQ e1 = expr IN e2 = expr {
+      let full_ty = List.fold_right (fun (_, arg_ty) acc_ty -> FunTy (arg_ty, acc_ty)) args ty in
+      SLet { is_rec = true; name = f; args = args; ty = full_ty; value = e1; body = e2 }
+    }
 
-expr1:
-  | expr1 AND expr2 { SBop(And, $1, $3) }
-  | expr2 { $1 }
+  /* Conditional Expression */
+  | IF e1 = expr THEN e2 = expr ELSE e3 = expr { SIf (e1, e2, e3) }
+
+  /* Function definition with multiple arguments */
+  | FUN args = list(arg) ARROW e = expr {
+      List.fold_right (fun (x, ty) acc -> SFun { arg = (x, ty); args = []; body = acc }) args e
+    }
+
+  | e = expr2 { e }
 
 expr2:
-  | expr3 relop expr3 { SBop($2, $1, $3) }
-  | expr3 { $1 }
+  | e1 = expr2 op = bop e2 = expr2 { SBop(op, e1, e2) }
+  | ASSERT e = expr3 { SAssert e }
+  | e = expr3 es = expr3* { mk_app e es }
 
 expr3:
-  | expr3 ADD expr4 { SBop(Add, $1, $3) }
-  | expr3 SUB expr4 { SBop(Sub, $1, $3) }
-  | expr4 { $1 }
-
-expr4:
-  | expr4 MUL expr5 { SBop(Mul, $1, $3) }
-  | expr4 DIV expr5 { SBop(Div, $1, $3) }
-  | expr4 MOD expr5 { SBop(Mod, $1, $3) }
-  | expr5 { $1 }
-
-expr5:
-  | expr5 expr6 %prec APP { SApp($1, $2) }
-  | expr6 { $1 }
-
-expr6:
   | UNIT { SUnit }
   | TRUE { STrue }
   | FALSE { SFalse }
-  | NUM { SNum $1 }
-  | VAR { SVar $1 }
-  | LPAREN expr=expr RPAREN { expr }
+  | n = NUM { SNum n }
+  | x = VAR { SVar x }
+  | LPAREN e = expr RPAREN { e }
 
-relop:
+%inline bop:
+  | ADD { Add }
+  | SUB { Sub }
+  | MUL { Mul }
+  | DIV { Div }
+  | MOD { Mod }
   | LT { Lt }
   | LTE { Lte }
   | GT { Gt }
   | GTE { Gte }
   | EQ { Eq }
   | NEQ { Neq }
+  | AND { And }
+  | OR { Or }
