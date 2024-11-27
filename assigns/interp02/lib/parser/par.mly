@@ -9,14 +9,18 @@ let rec mk_app e = function
 /* token declarations */
 %token <int> NUM
 %token <string> VAR
-%token IF THEN ELSE
-%token LET IN
-%token FUN REC ARROW
-%token ADD SUB MUL DIV MOD
-%token LT LTE GT GTE EQ NEQ AND OR
 %token UNIT TRUE FALSE
 %token LPAREN RPAREN
-%token ASSERT COLON INT BOOL
+%token ADD SUB MUL DIV MOD
+%token LT LTE GT GTE EQ NEQ
+%token AND OR
+%token IF THEN ELSE
+%token LET IN
+%token FUN ARROW
+%token REC
+%token COLON
+%token INT BOOL UNIT_TY
+%token ASSERT
 %token EOF
 
 %right OR
@@ -26,7 +30,7 @@ let rec mk_app e = function
 %left MUL DIV MOD
 %right ARROW
 
-%start <prog> prog
+%start <Utils.prog> prog
 
 %%
 
