@@ -9,14 +9,6 @@ exception CompareFunVals
 
 (* Helper function for fresh type variables *)
 let gensym () = TVar (Stdlib320.gensym ())
-let rec free_vars_ty ty =
-  match ty with
-  | TUnit | TInt | TFloat | TBool -> VarSet.empty
-  | TVar x -> VarSet.of_list [x]
-  | TList t -> free_vars_ty t
-  | TOption t -> free_vars_ty t
-  | TPair (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
-  | TFun (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
 
 (* Substitution functions *)
 let rec substitute_ty subst ty =
@@ -33,7 +25,18 @@ let rec substitute_ty subst ty =
 let substitute_constr subst (t1, t2) =
   (substitute_ty subst t1, substitute_ty subst t2)
 
-let unify ty constrs =
+(* Helper function to find free type variables in a type *)
+let rec free_vars_ty ty =
+  match ty with
+  | TUnit | TInt | TFloat | TBool -> VarSet.empty
+  | TVar x -> VarSet.of_list [x]
+  | TList t -> free_vars_ty t
+  | TOption t -> free_vars_ty t
+  | TPair (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
+  | TFun (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
+
+(* The three required functions *)
+let unify ty constrs =  (* removed 'rec' here *)
   let rec occurs x = function
     | TUnit | TInt | TFloat | TBool -> false
     | TVar y -> x = y
@@ -41,7 +44,7 @@ let unify ty constrs =
     | TOption t -> occurs x t
     | TPair (t1, t2) | TFun (t1, t2) -> occurs x t1 || occurs x t2
   in
-  let rec solve subst = function
+  let rec solve subst = function  (* 'rec' needed here *)
     | [] -> Some subst
     | (t1, t2) :: rest when t1 = t2 -> solve subst rest
     | (TVar x, t) :: rest | (t, TVar x) :: rest ->
@@ -64,133 +67,129 @@ let unify ty constrs =
       Some (Forall (free_vars, ty'))
 
 let type_of env expr =
-  let rec infer env expr =
-    match expr with
-    | Unit -> Ok (TUnit, [])
-    | True | False -> Ok (TBool, [])
-    | Int _ -> Ok (TInt, [])
-    | Float _ -> Ok (TFloat, [])
-    | Nil -> 
-        let alpha = gensym () in
-        Ok (TList alpha, [])
-    | ENone ->
-        let alpha = gensym () in
-        Ok (TOption alpha, [])
-    | ESome e ->
-        (match infer env e with
-         | Ok (t, c) -> Ok (TOption t, c)
-         | Error e -> Error e)
-    | Var x ->
-        (match Env.find_opt x env with
-         | Some (Forall (vars, ty)) ->
-             let subst = List.map (fun v -> (v, gensym ())) vars in
-             Ok (substitute_ty subst ty, [])
-         | None -> Error TypeError)
-    | Fun (x, Some t, e) ->
-        (match infer (Env.add x (Forall ([], t)) env) e with
-         | Ok (t2, c) -> Ok (TFun (t, t2), c)
-         | Error e -> Error e)
-    | Fun (x, None, e) ->
-        let alpha = gensym () in
-        let env' = Env.add x (Forall ([], alpha)) env in
-        (match infer env' e with
-         | Ok (t, c) -> Ok (TFun (alpha, t), c)
-         | Error e -> Error e)
-    | App (e1, e2) ->
-        let alpha = gensym () in
-        (match infer env e1, infer env e2 with
-         | Ok (t1, c1), Ok (t2, c2) ->
-             Ok (alpha, (t1, TFun (t2, alpha)) :: c1 @ c2)
-         | Error e, _ | _, Error e -> Error e)
-    | If (e1, e2, e3) ->
-        (match infer env e1, infer env e2, infer env e3 with
-         | Ok (t1, c1), Ok (t2, c2), Ok (t3, c3) ->
-             Ok (t2, (t1, TBool) :: (t2, t3) :: c1 @ c2 @ c3)
-         | Error e, _, _ | _, Error e, _ | _, _, Error e -> Error e)
-    | Let { is_rec = false; name; value; body } ->
-        (match infer env value with
-         | Ok (t1, c1) ->
-             (match unify t1 c1 with
-              | Some scheme ->
-                  let env' = Env.add name scheme env in
-                  (match infer env' body with
-                   | Ok (t2, c2) -> Ok (t2, c2)
-                   | Error e -> Error e)
-              | None -> Error TypeError)
-         | Error e -> Error e)
-    | Let { is_rec = true; name; value; body } ->
-        let alpha = gensym () in
-        let beta = gensym () in
-        let env' = Env.add name (Forall ([], TFun (alpha, beta))) env in
-        (match infer env' value with
-         | Ok (t1, c1) ->
-             let c_new = (t1, TFun (alpha, beta)) :: c1 in
-             (match infer env' body with
-              | Ok (t2, c2) -> Ok (t2, c_new @ c2)
-              | Error e -> Error e)
-         | Error e -> Error e)
-    | Bop (op, e1, e2) ->
-        let (t1_expected, t2_expected, result_ty) =
-          match op with
-          | Add | Sub | Mul | Div | Mod -> (TInt, TInt, TInt)
-          | AddF | SubF | MulF | DivF | PowF -> (TFloat, TFloat, TFloat)
-          | Lt | Lte | Gt | Gte | Eq | Neq -> 
-              let alpha = gensym () in (alpha, alpha, TBool)
-          | And | Or -> (TBool, TBool, TBool)
-          | Cons -> let alpha = gensym () in (alpha, TList alpha, TList alpha)
-          | Concat -> let alpha = gensym () in (TList alpha, TList alpha, TList alpha)
-          | Comma -> let alpha = gensym () in let beta = gensym () in 
-                    (alpha, beta, TPair (alpha, beta))
+        let rec infer env expr =
+          match expr with
+          | Unit -> Ok (TUnit, [])
+          | True | False -> Ok (TBool, [])
+          | Int _ -> Ok (TInt, [])
+          | Float _ -> Ok (TFloat, [])
+          | Nil -> 
+              let alpha = gensym () in
+              Ok (TList alpha, [])
+          | ENone ->
+              let alpha = gensym () in
+              Ok (TOption alpha, [])
+          | ESome e ->
+              (match infer env e with
+               | Ok (t, c) -> Ok (TOption t, c)
+               | Error e -> Error e)
+          | Var x ->
+              (match Env.find_opt x env with
+               | Some (Forall (vars, ty)) ->
+                   let subst = List.map (fun v -> (v, gensym ())) vars in
+                   Ok (substitute_ty subst ty, [])
+               | None -> Error TypeError)
+          | Fun (x, Some t, e) ->
+              (match infer (Env.add x (Forall ([], t)) env) e with
+               | Ok (t2, c) -> Ok (TFun (t, t2), c)
+               | Error e -> Error e)
+          | Fun (x, None, e) ->
+              let alpha = gensym () in
+              let env' = Env.add x (Forall ([], alpha)) env in
+              (match infer env' e with
+               | Ok (t, c) -> Ok (TFun (alpha, t), c)
+               | Error e -> Error e)
+          | App (e1, e2) ->
+              let alpha = gensym () in
+              (match infer env e1, infer env e2 with
+               | Ok (t1, c1), Ok (t2, c2) ->
+                   Ok (alpha, (t1, TFun (t2, alpha)) :: c1 @ c2)
+               | Error e, _ | _, Error e -> Error e)
+          | If (e1, e2, e3) ->
+              (match infer env e1, infer env e2, infer env e3 with
+               | Ok (t1, c1), Ok (t2, c2), Ok (t3, c3) ->
+                   Ok (t2, (t1, TBool) :: (t2, t3) :: c1 @ c2 @ c3)
+               | Error e, _, _ | _, Error e, _ | _, _, Error e -> Error e)
+          | Let { is_rec = false; name; value; body } ->
+              (match infer env value with
+               | Ok (t1, c1) ->
+                   let env' = Env.add name (Forall ([], t1)) env in
+                   (match infer env' body with
+                    | Ok (t2, c2) -> Ok (t2, c1 @ c2)
+                    | Error e -> Error e)
+               | Error e -> Error e)
+          | Let { is_rec = true; name; value; body } ->
+              let alpha = gensym () in
+              let beta = gensym () in
+              let env' = Env.add name (Forall ([], TFun (alpha, beta))) env in
+              (match infer env' value with
+               | Ok (t1, c1) ->
+                   let c_new = (t1, TFun (alpha, beta)) :: c1 in
+                   (match infer env' body with
+                    | Ok (t2, c2) -> Ok (t2, c_new @ c2)
+                    | Error e -> Error e)
+               | Error e -> Error e)
+          | Annot (e, ty) ->
+              (match infer env e with
+               | Ok (t, c) -> Ok (ty, (t, ty) :: c)
+               | Error e -> Error e)
+          | Assert e ->
+              (match infer env e with
+               | Ok (t, c) -> Ok (TUnit, (t, TBool) :: c)
+               | Error e -> Error e)
+          | Bop (op, e1, e2) ->
+              let (t1_expected, t2_expected, result_ty) =
+                match op with
+                | Add | Sub | Mul | Div | Mod -> (TInt, TInt, TInt)
+                | AddF | SubF | MulF | DivF | PowF -> (TFloat, TFloat, TFloat)
+                | Lt | Lte | Gt | Gte | Eq | Neq -> (TInt, TInt, TBool)
+                | And | Or -> (TBool, TBool, TBool)
+                | Cons -> let alpha = gensym () in (alpha, TList alpha, TList alpha)
+                | Concat -> let alpha = gensym () in (TList alpha, TList alpha, TList alpha)
+                | Comma -> let alpha = gensym () in let beta = gensym () in 
+                          (alpha, beta, TPair (alpha, beta))
+              in
+              (match infer env e1, infer env e2 with
+               | Ok (t1, c1), Ok (t2, c2) ->
+                   Ok (result_ty, (t1, t1_expected) :: (t2, t2_expected) :: c1 @ c2)
+               | Error e, _ | _, Error e -> Error e)
+          | ListMatch { matched; nil_case; hd_name; tl_name; cons_case } ->
+              let alpha = gensym () in
+              (match infer env matched with
+               | Ok (t1, c1) ->
+                   let env' = Env.add hd_name (Forall ([], alpha))
+                               (Env.add tl_name (Forall ([], TList alpha)) env) in
+                   (match infer env nil_case, infer env' cons_case with
+                    | Ok (t2, c2), Ok (t3, c3) ->
+                        Ok (t2, (t1, TList alpha) :: (t2, t3) :: c1 @ c2 @ c3)
+                    | Error e, _ | _, Error e -> Error e)
+               | Error e -> Error e)
+          | OptMatch { matched; some_name; some_case; none_case } ->
+              let alpha = gensym () in
+              (match infer env matched with
+               | Ok (t1, c1) ->
+                   let env' = Env.add some_name (Forall ([], alpha)) env in
+                   (match infer env' some_case, infer env none_case with
+                    | Ok (t2, c2), Ok (t3, c3) ->
+                        Ok (t2, (t1, TOption alpha) :: (t2, t3) :: c1 @ c2 @ c3)
+                    | Error e, _ | _, Error e -> Error e)
+               | Error e -> Error e)
+          | PairMatch { matched; fst_name; snd_name; case } ->
+              let alpha = gensym () in
+              let beta = gensym () in
+              (match infer env matched with
+               | Ok (t1, c1) ->
+                   let env' = Env.add fst_name (Forall ([], alpha))
+                               (Env.add snd_name (Forall ([], beta)) env) in
+                   (match infer env' case with
+                    | Ok (t2, c2) ->
+                        Ok (t2, (t1, TPair (alpha, beta)) :: c1 @ c2)
+                    | Error e -> Error e)
+               | Error e -> Error e)
         in
-        (match infer env e1, infer env e2 with
-         | Ok (t1, c1), Ok (t2, c2) ->
-             Ok (result_ty, (t1, t1_expected) :: (t2, t2_expected) :: c1 @ c2)
-         | Error e, _ | _, Error e -> Error e)
-    | Annot (e, ty) ->
-        (match infer env e with
-         | Ok (t, c) -> Ok (ty, (t, ty) :: c)
-         | Error e -> Error e)
-    | Assert e ->
-        (match infer env e with
-         | Ok (t, c) -> Ok (TUnit, (t, TBool) :: c)
-         | Error e -> Error e)
-    | ListMatch { matched; nil_case; hd_name; tl_name; cons_case } ->
-        let alpha = gensym () in
-        (match infer env matched with
-         | Ok (t1, c1) ->
-             let env' = Env.add hd_name (Forall ([], alpha))
-                         (Env.add tl_name (Forall ([], TList alpha)) env) in
-             (match infer env nil_case, infer env' cons_case with
-              | Ok (t2, c2), Ok (t3, c3) ->
-                  Ok (t2, (t1, TList alpha) :: (t2, t3) :: c1 @ c2 @ c3)
-              | Error e, _ | _, Error e -> Error e)
-         | Error e -> Error e)
-    | OptMatch { matched; some_name; some_case; none_case } ->
-        let alpha = gensym () in
-        (match infer env matched with
-         | Ok (t1, c1) ->
-             let env' = Env.add some_name (Forall ([], alpha)) env in
-             (match infer env' some_case, infer env none_case with
-              | Ok (t2, c2), Ok (t3, c3) ->
-                  Ok (t2, (t1, TOption alpha) :: (t2, t3) :: c1 @ c2 @ c3)
-              | Error e, _ | _, Error e -> Error e)
-         | Error e -> Error e)
-    | PairMatch { matched; fst_name; snd_name; case } ->
-        let alpha = gensym () in
-        let beta = gensym () in
-        (match infer env matched with
-         | Ok (t1, c1) ->
-             let env' = Env.add fst_name (Forall ([], alpha))
-                         (Env.add snd_name (Forall ([], beta)) env) in
-             (match infer env' case with
-              | Ok (t2, c2) ->
-                  Ok (t2, (t1, TPair (alpha, beta)) :: c1 @ c2)
-              | Error e -> Error e)
-         | Error e -> Error e)
-  in
-  match infer env expr with
-  | Ok (ty, constrs) -> unify ty constrs
-  | Error _ -> None
+        match infer env expr with
+        | Ok (ty, constrs) -> unify ty constrs
+        | Error _ -> None
 
 let rec eval_expr env expr =
   match expr with
