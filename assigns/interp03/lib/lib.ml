@@ -38,6 +38,8 @@ let rec free_vars_ty ty =
 (* Unification *)
 (* unify: ty -> constr list -> ty_scheme option *)
 
+(* Helper: collect all universally bound vars from environment *)
+(* unify: ty -> constr list -> ty_scheme option *)
 let unify ty constrs =
   let rec occurs x = function
     | TUnit | TInt | TFloat | TBool -> false
@@ -51,14 +53,16 @@ let unify ty constrs =
     | (t1, t2) :: rest when t1 = t2 -> solve subst rest
     | (TVar x, t) :: rest | (t, TVar x) :: rest ->
         if occurs x t then None
-        else let subst' = (x, t) :: subst in
-             solve subst' (List.map (fun (a,b) -> substitute_constr [(x, t)] (a,b)) rest)
+        else
+          let subst' = (x, t) :: subst in
+          let rest' = List.map (fun (a,b) -> substitute_constr [(x, t)] (a,b)) rest in
+          solve subst' rest'
     | (TList t1, TList t2) :: rest -> solve subst ((t1, t2) :: rest)
     | (TOption t1, TOption t2) :: rest -> solve subst ((t1, t2) :: rest)
-    | (TPair(t11,t12), TPair(t21,t22)) :: rest ->
-        solve subst ((t11,t21)::(t12,t22)::rest)
-    | (TFun(t11,t12), TFun(t21,t22)) :: rest ->
-        solve subst ((t11,t21)::(t12,t22)::rest)
+    | (TPair (t11, t12), TPair (t21, t22)) :: rest ->
+        solve subst ((t11, t21) :: (t12, t22) :: rest)
+    | (TFun (t11, t12), TFun (t21, t22)) :: rest ->
+        solve subst ((t11, t21) :: (t12, t22) :: rest)
     | _ -> None
   in
   match solve [] constrs with
@@ -70,7 +74,6 @@ let unify ty constrs =
       Some (Forall (fv_list, ty'))
 
 (* type_of: stc_env -> expr -> ty_scheme option *)
-
 let type_of env expr =
   let rec infer env expr =
     match expr with
@@ -157,15 +160,15 @@ let type_of env expr =
                | And | Or ->
                  ([(t1,TBool);(t2,TBool)], TBool)
                | Cons ->
-                 let alpha = gensym () in
-                 ([(t1,alpha);(t2,TList alpha)], TList alpha)
+                 let a = gensym () in
+                 ([(t1,a);(t2,TList a)], TList a)
                | Concat ->
-                 let alpha = gensym () in
-                 ([(t1,TList alpha);(t2,TList alpha)], TList alpha)
+                 let a = gensym () in
+                 ([(t1,TList a);(t2,TList a)], TList a)
                | Comma ->
-                 let alpha = gensym () in
-                 let beta = gensym () in
-                 ([(t1,alpha);(t2,beta)], TPair(alpha,beta))
+                 let a = gensym () in
+                 let b = gensym () in
+                 ([(t1,a);(t2,b)], TPair(a,b))
              in
              Ok (result_ty, op_constrs @ c1 @ c2)
          | Error e, _ | _, Error e -> Error e)
@@ -195,7 +198,8 @@ let type_of env expr =
         let beta = gensym () in
         (match infer env matched with
          | Ok(t1,c1)->
-           let env' = Env.add fst_name (Forall([],alpha)) (Env.add snd_name (Forall([],beta)) env) in
+           let env' = Env.add fst_name (Forall([],alpha))
+                      (Env.add snd_name (Forall([],beta)) env) in
            (match infer env' case with
             | Ok(t2,c2)->Ok(t2,(t1,TPair(alpha,beta))::c1@c2)
             | Error e->Error e)
@@ -204,6 +208,7 @@ let type_of env expr =
   match infer env expr with
   | Ok (ty, constrs) -> unify ty constrs
   | Error _ -> None
+
 let rec eval_expr env expr =
   match expr with
   | Unit -> VUnit
