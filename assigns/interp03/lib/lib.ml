@@ -36,6 +36,8 @@ let rec free_vars_ty ty =
   | TFun (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
 
 (* Unification *)
+(* unify: ty -> constr list -> ty_scheme option *)
+
 let unify ty constrs =
   let rec occurs x = function
     | TUnit | TInt | TFloat | TBool -> false
@@ -49,23 +51,25 @@ let unify ty constrs =
     | (t1, t2) :: rest when t1 = t2 -> solve subst rest
     | (TVar x, t) :: rest | (t, TVar x) :: rest ->
         if occurs x t then None
-        else
-          let subst' = (x, t) :: subst in
-          solve subst' (List.map (substitute_constr [(x, t)]) rest)
+        else let subst' = (x, t) :: subst in
+             solve subst' (List.map (fun (a,b) -> substitute_constr [(x, t)] (a,b)) rest)
     | (TList t1, TList t2) :: rest -> solve subst ((t1, t2) :: rest)
     | (TOption t1, TOption t2) :: rest -> solve subst ((t1, t2) :: rest)
-    | (TPair (t11, t12), TPair (t21, t22)) :: rest ->
-        solve subst ((t11, t21) :: (t12, t22) :: rest)
-    | (TFun (t11, t12), TFun (t21, t22)) :: rest ->
-        solve subst ((t11, t21) :: (t12, t22) :: rest)
+    | (TPair(t11,t12), TPair(t21,t22)) :: rest ->
+        solve subst ((t11,t21)::(t12,t22)::rest)
+    | (TFun(t11,t12), TFun(t21,t22)) :: rest ->
+        solve subst ((t11,t21)::(t12,t22)::rest)
     | _ -> None
   in
   match solve [] constrs with
   | None -> None
   | Some subst ->
       let ty' = substitute_ty subst ty in
-      let free_vars = VarSet.to_list (free_vars_ty ty') in
-      Some (Forall (free_vars, ty'))
+      let fv = free_vars_ty ty' in
+      let fv_list = VarSet.to_list fv in
+      Some (Forall (fv_list, ty'))
+
+(* type_of: stc_env -> expr -> ty_scheme option *)
 
 let type_of env expr =
   let rec infer env expr =
@@ -148,7 +152,6 @@ let type_of env expr =
                  ([(t1,TInt);(t2,TInt)], TInt)
                | AddF | SubF | MulF | DivF | PowF ->
                  ([(t1,TFloat);(t2,TFloat)], TFloat)
-               (* Comparisons and equality are now polymorphic: unify both to alpha *)
                | Lt | Lte | Gt | Gte | Eq | Neq ->
                  ([(t1,alpha);(t2,alpha)], TBool)
                | And | Or ->
@@ -201,7 +204,6 @@ let type_of env expr =
   match infer env expr with
   | Ok (ty, constrs) -> unify ty constrs
   | Error _ -> None
-
 let rec eval_expr env expr =
   match expr with
   | Unit -> VUnit
