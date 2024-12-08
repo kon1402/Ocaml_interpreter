@@ -10,7 +10,7 @@ exception CompareFunVals
 (* Helper function for fresh type variables *)
 let gensym () = TVar (Stdlib320.gensym ())
 
-(* Substitution functions *)
+(* Substitute type variables according to a substitution list *)
 let rec substitute_ty subst ty =
   match ty with
   | TUnit | TInt | TFloat | TBool -> ty
@@ -22,9 +22,11 @@ let rec substitute_ty subst ty =
   | TPair (t1, t2) -> TPair (substitute_ty subst t1, substitute_ty subst t2)
   | TFun (t1, t2) -> TFun (substitute_ty subst t1, substitute_ty subst t2)
 
+(* Substitute constraints *)
 let substitute_constr subst (t1, t2) =
   (substitute_ty subst t1, substitute_ty subst t2)
 
+(* Compute free type variables of a type *)
 let rec free_vars_ty ty =
   match ty with
   | TUnit | TInt | TFloat | TBool -> VarSet.empty
@@ -34,95 +36,102 @@ let rec free_vars_ty ty =
   | TPair (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
   | TFun (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
 
-  let unify ty constrs = 
-    (* Check if type variable occurs in type *)
-    let rec occurs x = function
-      | TUnit | TInt | TFloat | TBool -> false
-      | TVar y -> x = y 
-      | TList t -> occurs x t
-      | TOption t -> occurs x t
-      | TPair (t1, t2) | TFun (t1, t2) -> occurs x t1 || occurs x t2
-    in
-  
-    (* Solve constraints recursively *)
-    let rec solve subst = function
-      | [] -> Some subst
-      | (t1, t2) :: rest when t1 = t2 -> solve subst rest
-      | (TVar x, t) :: rest | (t, TVar x) :: rest ->
-          if occurs x t then None
-          else 
-            let subst' = (x, t) :: subst in
-            let rest' = List.map (fun (a,b) -> 
-              substitute_constr [(x, t)] (a,b)) rest in
-            solve subst' rest'
-      | (TList t1, TList t2) :: rest -> 
-          solve subst ((t1, t2) :: rest)
-      | (TOption t1, TOption t2) :: rest ->
-          solve subst ((t1, t2) :: rest) 
-      | (TPair (t11, t12), TPair (t21, t22)) :: rest ->
-          solve subst ((t11, t21) :: (t12, t22) :: rest)
-      | (TFun (t11, t12), TFun (t21, t22)) :: rest ->
-          solve subst ((t11, t21) :: (t12, t22) :: rest)
-      | _ -> None
-    in
-  
-    match solve [] constrs with
-    | None -> None
-    | Some subst -> 
-        let ty' = substitute_ty subst ty in
-        let fv = free_vars_ty ty' in
-        let fv_list = VarSet.to_list fv in
-        Some (Forall (fv_list, ty'))
-(* type_of: stc_env -> expr -> ty_scheme option *)
-let type_of env expr = 
-  let rec infer env expr = match expr with
-    | Unit -> Ok (TUnit, [])
-    | True | False -> Ok (TBool, [])
-    | Int _ -> Ok (TInt, [])
-    | Float _ -> Ok (TFloat, [])
-    | Nil -> 
-        let alpha = gensym () in 
-        Ok (TList alpha, [])
-    | ENone -> 
-        let alpha = gensym () in 
-        Ok (TOption alpha, [])
-    | ESome e -> 
+(* Unify: given a type and a list of constraints, produce a ty_scheme if possible *)
+let unify ty constrs =
+  let rec occurs x = function
+    | TUnit | TInt | TFloat | TBool -> false
+    | TVar y -> x = y
+    | TList t -> occurs x t
+    | TOption t -> occurs x t
+    | TPair (t1, t2) | TFun (t1, t2) -> occurs x t1 || occurs x t2
+  in
+  let rec solve subst = function
+    | [] -> Some subst
+    | (t1, t2) :: rest when t1 = t2 -> solve subst rest
+    | (TVar x, t) :: rest | (t, TVar x) :: rest ->
+        if occurs x t then None
+        else
+          let subst' = (x, t) :: subst in
+          let rest' = List.map (substitute_constr [(x, t)]) rest in
+          solve subst' rest'
+    | (TList t1, TList t2)::rest ->
+        solve subst ((t1,t2)::rest)
+    | (TOption t1, TOption t2)::rest ->
+        solve subst ((t1,t2)::rest)
+    | (TPair(t11,t12), TPair(t21,t22))::rest ->
+        solve subst ((t11,t21)::(t12,t22)::rest)
+    | (TFun(t11,t12), TFun(t21,t22))::rest ->
+        solve subst ((t11,t21)::(t12,t22)::rest)
+    | _ -> None
+  in
+  match solve [] constrs with
+  | None -> None
+  | Some subst ->
+      let ty' = substitute_ty subst ty in
+      let fv = free_vars_ty ty' in
+      let fv_list = VarSet.to_list fv in
+      Some (Forall (fv_list, ty'))
+
+(* type_of: Given a stc_env and an expr, produce a ty_scheme option *)
+(* We'll keep the code as is but ensure unify and constraints handle polymorphic comparisons *)
+let type_of env expr =
+  (* infer returns (ty * constr * VarSet), VarSet now empty since we cannot remove env-bound vars easily here *)
+  let rec infer env expr =
+    match expr with
+    | Unit -> Ok (TUnit, [], VarSet.empty)
+    | True | False -> Ok (TBool, [], VarSet.empty)
+    | Int _ -> Ok (TInt, [], VarSet.empty)
+    | Float _ -> Ok (TFloat, [], VarSet.empty)
+    | Nil ->
+        let alpha = gensym () in
+        Ok (TList alpha, [], VarSet.empty)
+    | ENone ->
+        let alpha = gensym () in
+        Ok (TOption alpha, [], VarSet.empty)
+    | ESome e ->
         (match infer env e with
-         | Ok (t, c) -> Ok (TOption t, c)
+         | Ok (t, c, vb) -> Ok (TOption t, c, vb)
          | Error e -> Error e)
-    | Var x -> 
+    | Var x ->
         (match Env.find_opt x env with
-         | Some (Forall (vars, ty)) -> 
+         | Some (Forall (vars, ty)) ->
              let subst = List.map (fun v -> (v, gensym ())) vars in
-             Ok (substitute_ty subst ty, [])
+             let t' = substitute_ty subst ty in
+             (* vars come from env, but we have no iteration to remove them, keep as is *)
+             Ok (t', [], VarSet.empty)
          | None -> Error TypeError)
     | Fun (x, Some t, e) ->
-        (match infer (Env.add x (Forall ([], t)) env) e with
-         | Ok (t2, c) -> Ok (TFun (t, t2), c)
+        let env' = Env.add x (Forall ([], t)) env in
+        (match infer env' e with
+         | Ok (t2, c, vb) -> Ok (TFun (t, t2), c, vb)
          | Error e -> Error e)
     | Fun (x, None, e) ->
         let alpha = gensym () in
         let env' = Env.add x (Forall ([], alpha)) env in
         (match infer env' e with
-         | Ok (t, c) -> Ok (TFun (alpha, t), c)
+         | Ok (t, c, vb) -> Ok (TFun (alpha, t), c, vb)
          | Error e -> Error e)
     | App (e1, e2) ->
         let alpha = gensym () in
         (match infer env e1, infer env e2 with
-         | Ok (t1, c1), Ok (t2, c2) -> 
-             Ok (alpha, (t1, TFun (t2, alpha)) :: c1 @ c2)
+         | Ok (t1, c1, vb1), Ok (t2, c2, vb2) ->
+             let vb = VarSet.union vb1 vb2 in
+             Ok (alpha, (t1, TFun (t2, alpha)) :: c1 @ c2, vb)
          | Error e, _ | _, Error e -> Error e)
     | If (e1, e2, e3) ->
         (match infer env e1, infer env e2, infer env e3 with
-         | Ok (t1, c1), Ok (t2, c2), Ok (t3, c3) ->
-             Ok (t2, (t1, TBool) :: (t2, t3) :: c1 @ c2 @ c3)
-         | Error e, _, _ | _, Error e, _ | _, _, Error e -> Error e)
+         | Ok (t1, c1, vb1), Ok (t2, c2, vb2), Ok (t3, c3, vb3) ->
+             let vb = VarSet.union vb1 (VarSet.union vb2 vb3) in
+             Ok (t2, (t1, TBool)::(t2, t3)::(c1 @ c2 @ c3), vb)
+         | Error e,_,_ | _,Error e,_ | _,_,Error e -> Error e)
     | Let { is_rec = false; name; value; body } ->
         (match infer env value with
-         | Ok (t1, c1) ->
+         | Ok (t1, c1, vb1) ->
              let env' = Env.add name (Forall ([], t1)) env in
              (match infer env' body with
-              | Ok (t2, c2) -> Ok (t2, c1 @ c2)
+              | Ok (t2, c2, vb2) ->
+                  let vb = VarSet.union vb1 vb2 in
+                  Ok (t2, c1 @ c2, vb)
               | Error e -> Error e)
          | Error e -> Error e)
     | Let { is_rec = true; name; value; body } ->
@@ -130,23 +139,26 @@ let type_of env expr =
         let beta = gensym () in
         let env' = Env.add name (Forall ([], TFun (alpha, beta))) env in
         (match infer env' value with
-         | Ok (t1, c1) ->
+         | Ok (t1, c1, vb1) ->
              let c_new = (t1, TFun (alpha, beta)) :: c1 in
              (match infer env' body with
-              | Ok (t2, c2) -> Ok (t2, c_new @ c2)
+              | Ok (t2, c2, vb2) ->
+                  let vb = VarSet.union vb1 vb2 in
+                  Ok (t2, c_new @ c2, vb)
               | Error e -> Error e)
          | Error e -> Error e)
     | Annot (e, ty) ->
         (match infer env e with
-         | Ok (t, c) -> Ok (ty, (t, ty) :: c)
+         | Ok (t, c, vb) -> Ok (ty, (t, ty)::c, vb)
          | Error e -> Error e)
     | Assert e ->
         (match infer env e with
-         | Ok (t, c) -> Ok (TUnit, (t, TBool) :: c)
+         | Ok (t, c, vb) -> Ok (TUnit, (t, TBool)::c, vb)
          | Error e -> Error e)
     | Bop (op, e1, e2) ->
         (match infer env e1, infer env e2 with
-         | Ok (t1, c1), Ok (t2, c2) ->
+         | Ok (t1, c1, vb1), Ok(t2,c2,vb2) ->
+             let vb = VarSet.union vb1 vb2 in
              let alpha = gensym () in
              let (op_constrs, result_ty) = match op with
                | Add | Sub | Mul | Div | Mod -> 
@@ -167,43 +179,53 @@ let type_of env expr =
                    let a = gensym () in
                    let b = gensym () in
                    ([(t1,a);(t2,b)], TPair(a,b))
-             in Ok (result_ty, op_constrs @ c1 @ c2)
-         | Error e, _ | _, Error e -> Error e)
+             in Ok (result_ty, op_constrs @ c1 @ c2, vb)
+         | Error e,_ | _,Error e -> Error e)
     | ListMatch { matched; nil_case; hd_name; tl_name; cons_case } ->
         let alpha = gensym () in
         (match infer env matched with
-         | Ok (t1, c1) ->
-             let env' = Env.add hd_name (Forall ([], alpha))
-                         (Env.add tl_name (Forall([], TList alpha)) env) in
-             (match infer env nil_case, infer env' cons_case with
-              | Ok (t2, c2), Ok (t3, c3) ->
-                  Ok (t2, (t1,TList alpha)::(t2,t3)::c1@c2@c3)
-              | Error e, _ | _, Error e -> Error e)
-         | Error e -> Error e)
+         | Ok(t1,c1,vb1)->
+            let env' = Env.add hd_name (Forall([],alpha))
+                       (Env.add tl_name (Forall([], TList alpha)) env) in
+            (match infer env nil_case, infer env' cons_case with
+             | Ok(t2,c2,vb2), Ok(t3,c3,vb3)->
+                 let vb = VarSet.union vb1 (VarSet.union vb2 vb3) in
+                 Ok(t2,(t1,TList alpha)::(t2,t3)::c1@c2@c3,vb)
+             | Error e, _ | _, Error e->Error e)
+         | Error e->Error e)
     | OptMatch { matched; some_name; some_case; none_case } ->
         let alpha = gensym () in
         (match infer env matched with
-         | Ok (t1, c1) ->
-             let env' = Env.add some_name (Forall([], alpha)) env in
-             (match infer env' some_case, infer env none_case with
-              | Ok(t2,c2),Ok(t3,c3)->
-                  Ok(t2,(t1,TOption alpha)::(t2,t3)::c1@c2@c3)
-              | Error e, _ | _, Error e->Error e)
+         | Ok(t1,c1,vb1)->
+            let env' = Env.add some_name (Forall([],alpha)) env in
+            (match infer env' some_case, infer env none_case with
+             | Ok(t2,c2,vb2), Ok(t3,c3,vb3)->
+                 let vb = VarSet.union vb1 (VarSet.union vb2 vb3) in
+                 Ok(t2,(t1,TOption alpha)::(t2,t3)::c1@c2@c3,vb)
+             | Error e, _ | _, Error e->Error e)
          | Error e->Error e)
     | PairMatch { matched; fst_name; snd_name; case } ->
         let alpha = gensym () in
         let beta = gensym () in
         (match infer env matched with
-         | Ok(t1,c1)->
-             let env' = Env.add fst_name (Forall([],alpha))
-                         (Env.add snd_name (Forall([],beta)) env) in
-             (match infer env' case with
-              | Ok(t2,c2)->Ok(t2,(t1,TPair(alpha,beta))::c1@c2)
-              | Error e->Error e)
+         | Ok(t1,c1,vb1)->
+           let env' = Env.add fst_name (Forall([],alpha))
+                      (Env.add snd_name (Forall([],beta)) env) in
+           (match infer env' case with
+            | Ok(t2,c2,vb2)->
+               let vb = VarSet.union vb1 vb2 in
+               Ok(t2,(t1,TPair(alpha,beta))::c1@c2,vb)
+            | Error e->Error e)
          | Error e->Error e)
   in
   match infer env expr with
-  | Ok (ty, constrs) -> unify ty constrs
+  | Ok (ty, constrs, _) -> (
+      match unify ty constrs with
+      | None -> None
+      | Some (Forall (fv_list, t)) ->
+          (* Just return the Forall as is since we can't prune easily without iteration *)
+          Some (Forall (fv_list, t))
+    )
   | Error _ -> None
 
 let rec eval_expr env expr =
@@ -273,7 +295,6 @@ let rec eval_expr env expr =
        | (Gte, VClos _, _) | (Gte, _, VClos _) -> raise CompareFunVals
        | (Eq, VClos _, _) | (Eq, _, VClos _) -> raise CompareFunVals
        | (Neq, VClos _, _) | (Neq, _, VClos _) -> raise CompareFunVals
-       (* polymorphic comparison via built-in compare *)
        | (Lt, _, _) -> VBool (v1 < v2)
        | (Lte, _, _) -> VBool (v1 <= v2)
        | (Gt, _, _) -> VBool (v1 > v2)
