@@ -19,7 +19,7 @@ let mk_list es =
     Nil
 %}
 
-%token EOF
+%token EOF 
 %token <int> INT
 %token <float> FLOAT
 %token <string> VAR
