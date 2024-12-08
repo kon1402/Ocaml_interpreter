@@ -25,7 +25,6 @@ let rec substitute_ty subst ty =
 let substitute_constr subst (t1, t2) =
   (substitute_ty subst t1, substitute_ty subst t2)
 
-(* Helper function to find free type variables in a type *)
 let rec free_vars_ty ty =
   match ty with
   | TUnit | TInt | TFloat | TBool -> VarSet.empty
@@ -35,11 +34,6 @@ let rec free_vars_ty ty =
   | TPair (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
   | TFun (t1, t2) -> VarSet.union (free_vars_ty t1) (free_vars_ty t2)
 
-(* Unification *)
-(* unify: ty -> constr list -> ty_scheme option *)
-
-(* Helper: collect all universally bound vars from environment *)
-(* unify: ty -> constr list -> ty_scheme option *)
 let unify ty constrs =
   let rec occurs x = function
     | TUnit | TInt | TFloat | TBool -> false
@@ -53,9 +47,9 @@ let unify ty constrs =
     | (t1, t2) :: rest when t1 = t2 -> solve subst rest
     | (TVar x, t) :: rest | (t, TVar x) :: rest ->
         if occurs x t then None
-        else
+        else 
           let subst' = (x, t) :: subst in
-          let rest' = List.map (fun (a,b) -> substitute_constr [(x, t)] (a,b)) rest in
+          let rest' = List.map (substitute_constr [(x, t)]) rest in
           solve subst' rest'
     | (TList t1, TList t2) :: rest -> solve subst ((t1, t2) :: rest)
     | (TOption t1, TOption t2) :: rest -> solve subst ((t1, t2) :: rest)
@@ -69,9 +63,8 @@ let unify ty constrs =
   | None -> None
   | Some subst ->
       let ty' = substitute_ty subst ty in
-      let fv = free_vars_ty ty' in
-      let fv_list = VarSet.to_list fv in
-      Some (Forall (fv_list, ty'))
+      let vars = VarSet.to_list (free_vars_ty ty') in
+      Some (Forall (vars, ty'))
 
 (* type_of: stc_env -> expr -> ty_scheme option *)
 let type_of env expr =
